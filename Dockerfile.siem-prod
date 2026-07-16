@@ -1,0 +1,23 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy entire application structure
+COPY app/ .
+
+# Install dependencies
+RUN pip install --no-cache-dir \
+    flask \
+    flask-sqlalchemy \
+    flask-migrate \
+    psycopg2-binary \
+    gunicorn \
+    requests
+
+# Ensure static directory exists
+RUN mkdir -p static/dashboard
+
+EXPOSE 5000
+
+# Gunicorn with proper module path
+CMD ["gunicorn", "--workers=4", "--threads=2", "--worker-class=gthread", "--bind=0.0.0.0:5000", "--timeout=120", "wsgi:app"]

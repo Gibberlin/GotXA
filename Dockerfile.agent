@@ -1,0 +1,13 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash coreutils netcat-traditional \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY log_generator.sh .
+
+RUN chmod +x ./log_generator.sh
+
+CMD ["/bin/bash", "./log_generator.sh"]

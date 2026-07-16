@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIEM/SOAR Operations Center</title>
+    <link rel="stylesheet" href="/static/dashboard/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <h1>🔒 SIEM/SOAR Operations Center</h1>
+        </div>
+        <div class="navbar-right">
+            <span class="status-badge" id="system-status">●</span>
+            <span id="status-text">Initializing...</span>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div id="error-banner"></div>
+
+        <!-- Key Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">Total Logs</div>
+                <div class="metric-value" id="metric-logs">-</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Total Alerts</div>
+                <div class="metric-value" id="metric-alerts">-</div>
+            </div>
+            <div class="metric-card alert-card">
+                <div class="metric-label">High Severity</div>
+                <div class="metric-value alert-value" id="metric-high">-</div>
+            </div>
+            <div class="metric-card warning-card">
+                <div class="metric-label">Medium Severity</div>
+                <div class="metric-value warning-value" id="metric-medium">-</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Open Incidents</div>
+                <div class="metric-value" id="metric-open">-</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Resolved</div>
+                <div class="metric-value" id="metric-resolved">-</div>
+            </div>
+        </div>
+
+        <!-- Charts Row 1 -->
+        <div class="charts-row">
+            <div class="chart-container">
+                <h3>📊 Logs by Level</h3>
+                <canvas id="chart-logs-level"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>⚠️ Alerts by Severity</h3>
+                <canvas id="chart-alerts-severity"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>🔴 Alert Status Distribution</h3>
+                <canvas id="chart-alerts-status"></canvas>
+            </div>
+        </div>
+
+        <!-- Charts Row 2 -->
+        <div class="charts-row">
+            <div class="chart-container wide">
+                <h3>🏢 Logs by Host (Top 10)</h3>
+                <canvas id="chart-logs-host"></canvas>
+            </div>
+        </div>
+
+        <!-- Tables Row -->
+        <div class="tables-row">
+            <div class="table-container">
+                <h3>📝 Recent Logs</h3>
+                <div id="table-logs" class="data-table"></div>
+            </div>
+            <div class="table-container">
+                <h3>🚨 Recent Alerts</h3>
+                <div id="table-alerts" class="data-table"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/dashboard/script.js"></script>
+</body>
+</html>

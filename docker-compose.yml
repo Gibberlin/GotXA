@@ -1,0 +1,130 @@
+version: '3.9'
+
+services:
+  # =========================================================================
+  # DATABASE TIER
+  # =========================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: siem-postgres
+    environment:
+      - POSTGRES_DB=siem_db
+      - POSTGRES_USER=siem_user
+      - POSTGRES_PASSWORD=siem_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - siem-tier-1
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U siem_user -d siem_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =========================================================================
+  # APPLICATION TIER (Central SIEM/SOAR Server)
+  # =========================================================================
+  siem-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.siem-prod
+    container_name: siem-server
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=postgresql://siem_user:siem_password@postgres:5432/siem_db
+    networks:
+      - siem-tier-1
+      - siem-tier-2
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # =========================================================================
+  # AGENT TIER (Distributed Log Sources)
+  # =========================================================================
+  agent-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent-prod
+    container_name: agent-1
+    environment:
+      - AGENT_NAME=agent-1
+    networks:
+      - siem-tier-2
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  agent-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent-prod
+    container_name: agent-2
+    environment:
+      - AGENT_NAME=agent-2
+    networks:
+      - siem-tier-2
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  agent-3:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent-prod
+    container_name: agent-3
+    environment:
+      - AGENT_NAME=agent-3
+    networks:
+      - siem-tier-2
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ============================================================================
+# NETWORKS (3-TIER TOPOLOGY)
+# ============================================================================
+networks:
+  # Tier 1: Database layer (isolated)
+  siem-tier-1:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+  # Tier 2: Application & Agent layer (inter-service communication)
+  siem-tier-2:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/16
+
+# ============================================================================
+# VOLUMES (Data Persistence)
+# ============================================================================
+volumes:
+  postgres_data:
+    driver: local
