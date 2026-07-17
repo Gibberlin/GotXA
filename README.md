@@ -1,6 +1,7 @@
 # Vulnerable Cyber Range — Critical Infrastructure SOC Simulation
 
-A self-contained Docker environment that simulates a critical infrastructure organization (e.g. a refinery like NRL/OIL), lets you launch real attacks against it, and demonstrates automated detection + response — a closed-loop SIEM/SOAR defense cycle.
+![Cyber Range Cover Image/Banner](path/to/banner-image.png)
+*A self-contained Docker environment simulating a critical infrastructure organization (e.g., a refinery like NRL/OIL), designed to launch real attacks and demonstrate automated detection and response.*
 
 ## Core Concepts
 
@@ -9,7 +10,12 @@ A self-contained Docker environment that simulates a critical infrastructure org
 - **Cyber Range** — a safe, isolated environment with *real* vulnerable software (not fake/simulated logs) so real attacks can be launched and really detected/defended against.
 - **IT/OT Split** — reflects real critical infrastructure: a **Corporate IT zone** (office systems, the usual attack surface) and an **Operational Technology (OT) zone** (industrial control systems / SCADA / PLCs that run the physical plant). Compromising IT and pivoting into OT is the real-world nightmare scenario this range is built to model.
 
-## Network Zones
+---
+
+## 🏗️ Architecture & Network Zones
+
+![Architecture Diagram](./images/image.png/)
+*(Above: High-level overview of the isolated subnets and container routing)*
 
 | Zone | Docker Network | Purpose |
 |---|---|---|
@@ -18,7 +24,9 @@ A self-contained Docker environment that simulates a critical infrastructure org
 | OT Zone | `ot_net` (172.25.0.0/16) | Simulated refinery floor — ICS/SCADA/PLC devices |
 | Attacker Zone | `attacker_net` | Isolated box to launch attacks from |
 
-## Containers
+---
+
+## 📦 Containers
 
 ### Security Control Layer
 | Container | Role |
@@ -46,9 +54,14 @@ A self-contained Docker environment that simulates a critical infrastructure org
 |---|---|
 | `attacker-machine` | Isolated box for launching real attack scripts against `corp-portal-agent`. |
 
-## The Closed-Loop Defense Demo
+---
 
-```
+## ⚔️ The Closed-Loop Defense Demo
+
+![Attack and Defense Flowchart](./images/attack.png)
+*(Above: The lifecycle of an exploit being caught and mitigated by the SOAR engine)*
+
+```text
 attacker-machine
       │  (SQL injection / RCE attempt)
       ▼
@@ -63,14 +76,9 @@ corp-portal-agent  ──writes log──▶  log-collector-dedicated
                                           ▼
                                   attacker IP blocked
 ```
+# This technical infographic is a working diagram of GotXA SOC:
+- **Asset Inventory:** Detailed descriptions of every functional container from your deployment, explaining their specific roles, port numbers, and low resource usage.
+- **Deployment Architecture:** A map of the three primary network zones—Corporate IT, OT Refinery, and the Security Control Layer—showing web-like connectivity between devices, including the central role of the dedicated log collector.
+- **Closed-Loop Attack Simulation:** A clear, numbered trace of how an IT-to-OT pivot works in practice. This path follows an attack from the IT Corporate portal through the SCADA gateway to the refinery PLCs, and then shows how the SIEM and SOAR engines automatically detect and mitigate the threat by quarantining the attacker's IP.
 
-## Key Endpoints
-- Dashboard: `http://localhost:5000/`
-- Health check: `http://localhost:5000/health`
-- SIEM ingest API: `POST http://localhost:5000/api/v1/ingress`
-- Alerts: `GET http://localhost:5000/api/v1/alerts?severity=HIGH`
-- SOAR actions log: `GET http://localhost:5000/api/v1/soar/actions`
-- Vulnerable portal: `http://localhost:5001/`
-
-## Known Issue / Fix In Progress
-Logs currently aren't reaching the SIEM: `corp-portal-agent` writes to a local path inside its own container, but `log-collector-dedicated` watches a path that no shared volume connects to (removed during the refactor). Fix: restore per-zone shared volumes (`corporate-logs`, `ot-logs`) between source containers and the collector so the collector can tail real log files, rather than having each app POST to the SIEM directly — this keeps the collector's role realistic and preserves network/zone isolation.
+![Project execution FlowChart](./images/poster.png)
