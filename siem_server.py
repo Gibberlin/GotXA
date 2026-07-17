@@ -16,7 +16,7 @@ from collections import defaultdict
 app = Flask(__name__)
 
 # Database config
-DB_HOST = os.getenv('DB_HOST', 'postgres')
+DB_HOST = os.getenv('DB_HOST', 'siem-postgres')
 DB_PORT = os.getenv('DB_PORT', 5432)
 DB_NAME = os.getenv('DB_NAME', 'siem_db')
 DB_USER = os.getenv('DB_USER', 'siem_user')
@@ -102,6 +102,8 @@ def ingest_logs():
     """Endpoint to receive and store logs."""
     try:
         data = request.get_json()
+        print(f"[DEBUG] Raw request data: {data}")
+        logger.info(f"[INGEST] Received payload: {json.dumps(data)[:200]}")
         if not data:
             return jsonify({"error": "No JSON data"}), 400
         
@@ -122,8 +124,8 @@ def ingest_logs():
                 
                 # Insert log
                 cursor.execute("""
-                    INSERT INTO logs (timestamp, level, message, host, ingested_at)
-                    VALUES (%s, %s, %s, %s, NOW())
+                    INSERT INTO logs (timestamp, level, message, host, ingested_at, created_at)
+                    VALUES (%s, %s, %s, %s, NOW(), NOW())
                     RETURNING id;
                 """, (timestamp, level, message, host))
                 
@@ -156,16 +158,16 @@ def check_alerts(cursor, log_id, host, message, level):
     # Alert rule 1: Error patterns
     if any(word in message_lower for word in ['error', 'fail', 'critical', 'exception']):
         cursor.execute("""
-            INSERT INTO alerts (host, severity, rule, log_message, log_id)
-            VALUES (%s, %s, %s, %s, %s);
+            INSERT INTO alerts (timestamp, host, severity, rule, log_message, log_id)
+            VALUES (NOW(), %s, %s, %s, %s, %s);
         """, (host, 'HIGH', 'Error detected', message, log_id))
         logger.warning(f"ALERT: Error on {host} - {message}")
     
     # Alert rule 2: Warn level
     if level.upper() == 'WARN':
         cursor.execute("""
-            INSERT INTO alerts (host, severity, rule, log_message, log_id)
-            VALUES (%s, %s, %s, %s, %s);
+            INSERT INTO alerts (timestamp, host, severity, rule, log_message, log_id)
+            VALUES (NOW(), %s, %s, %s, %s, %s);
         """, (host, 'MEDIUM', 'Warning detected', message, log_id))
 
 @app.route('/status', methods=['GET'])

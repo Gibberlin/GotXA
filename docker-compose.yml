@@ -2,129 +2,169 @@ version: '3.9'
 
 services:
   # =========================================================================
-  # DATABASE TIER
+  # SECURITY LAYER (172.23.0.0/16)
+  # Central SIEM, database, and log collection
   # =========================================================================
-  postgres:
+  
+  siem-postgres:
     image: postgres:15-alpine
     container_name: siem-postgres
     environment:
-      - POSTGRES_DB=siem_db
-      - POSTGRES_USER=siem_user
-      - POSTGRES_PASSWORD=siem_password
+      POSTGRES_DB: siem_db
+      POSTGRES_USER: siem_user
+      POSTGRES_PASSWORD: siem_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - siem-tier-1
+      - security-control
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U siem_user -d siem_db"]
+      test: ["CMD-SHELL", "pg_isready -U siem_user"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
-  # =========================================================================
-  # APPLICATION TIER (Central SIEM/SOAR Server)
-  # =========================================================================
-  siem-server:
+  siem-soar-server:
     build:
       context: .
-      dockerfile: Dockerfile.siem-prod
-    container_name: siem-server
+      dockerfile: Dockerfile.siem
+    container_name: siem-soar-server
     ports:
       - "5000:5000"
     environment:
-      - FLASK_ENV=production
-      - DATABASE_URL=postgresql://siem_user:siem_password@postgres:5432/siem_db
+      DATABASE_URL: postgresql://siem_user:siem_password@siem-postgres:5432/siem_db
     networks:
-      - siem-tier-1
-      - siem-tier-2
+      - security-control
+      - corporate-net
+      - operational-net
     depends_on:
-      postgres:
+      siem-postgres:
         condition: service_healthy
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "5"
+
+  log-collector-dedicated:
+    build:
+      context: .
+      dockerfile: Dockerfile.collector
+    container_name: log-collector-dedicated
+    ports:
+      - "5005:5001"
+    volumes:
+      - logs_shared:/logs
+    networks:
+      - security-control
+      - corporate-net
+      - operational-net
+    depends_on:
+      - siem-soar-server
+    restart: unless-stopped
 
   # =========================================================================
-  # AGENT TIER (Distributed Log Sources)
+  # CORPORATE NETWORK (172.24.0.0/16)
+  # Vulnerable app for testing + passive infrastructure
   # =========================================================================
-  agent-1:
+  
+  corp-portal-agent:
     build:
       context: .
-      dockerfile: Dockerfile.agent-prod
-    container_name: agent-1
-    environment:
-      - AGENT_NAME=agent-1
+      dockerfile: Dockerfile.vulnerable
+    container_name: corp-portal-agent
+    ports:
+      - "5001:5001"
+    volumes:
+      - logs_shared:/logs
     networks:
-      - siem-tier-2
+      - corporate-net
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
-  agent-2:
-    build:
-      context: .
-      dockerfile: Dockerfile.agent-prod
-    container_name: agent-2
+  corp-database-agent:
+    image: postgres:15-alpine
+    container_name: corp-database-agent
     environment:
-      - AGENT_NAME=agent-2
+      POSTGRES_DB: corp_db
+      POSTGRES_USER: corp_user
+      POSTGRES_PASSWORD: corp_password
     networks:
-      - siem-tier-2
+      - corporate-net
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
-  agent-3:
+  # =========================================================================
+  # OT/SCADA NETWORK (172.25.0.0/16)
+  # Simulated operational technology agents
+  # =========================================================================
+  
+  ot-scada-gateway:
     build:
       context: .
-      dockerfile: Dockerfile.agent-prod
-    container_name: agent-3
+      dockerfile: Dockerfile.agent
+    container_name: ot-scada-gateway
+    ports:
+      - "5002:5002"
     environment:
-      - AGENT_NAME=agent-3
+      AGENT_NAME: ot-scada-gateway
+    volumes:
+      - logs_shared:/logs
     networks:
-      - siem-tier-2
+      - operational-net
     restart: unless-stopped
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+
+  ot-plc-refinery-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: ot-plc-refinery-1
+    ports:
+      - "5003:5003"
+    environment:
+      AGENT_NAME: ot-plc-refinery-1
+    volumes:
+      - logs_shared:/logs
+    networks:
+      - operational-net
+    restart: unless-stopped
+
+  ot-plc-refinery-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: ot-plc-refinery-2
+    ports:
+      - "5004:5004"
+    environment:
+      AGENT_NAME: ot-plc-refinery-2
+    volumes:
+      - logs_shared:/logs
+    networks:
+      - operational-net
+    restart: unless-stopped
 
 # ============================================================================
-# NETWORKS (3-TIER TOPOLOGY)
+# NETWORKS (3 Isolated Networks)
 # ============================================================================
 networks:
-  # Tier 1: Database layer (isolated)
-  siem-tier-1:
+  security-control:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
+        - subnet: 172.23.0.0/16
 
-  # Tier 2: Application & Agent layer (inter-service communication)
-  siem-tier-2:
+  corporate-net:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.21.0.0/16
+        - subnet: 172.24.0.0/16
+
+  operational-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
 
 # ============================================================================
-# VOLUMES (Data Persistence)
+# VOLUMES
 # ============================================================================
 volumes:
   postgres_data:
+    driver: local
+  logs_shared:
     driver: local
