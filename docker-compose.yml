@@ -138,6 +138,18 @@ services:
       - operational-net
     restart: unless-stopped
 
+  # ============================================================================
+  # Attacker
+  # ============================================================================
+  kali-attacker:
+    image: kalilinux/kali-rolling:latest
+    container_name: kali-attacker
+    networks:
+      - corporate-net 
+    stdin_open: true 
+    tty: true
+    restart: unless-stopped
+
 # ============================================================================
 # NETWORKS (3 Isolated Networks)
 # ============================================================================
