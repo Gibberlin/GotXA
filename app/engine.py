@@ -23,7 +23,9 @@ class SecurityRules:
         'invalid.*password',
         'unauthorized.*access',
         'access.*denied',
-        'permission.*denied'
+        'permission.*denied',
+        'auth.*failure',
+        'invalid.*credentials'
     ]
     BRUTE_FORCE_PATTERN = re.compile('|'.join(BRUTE_FORCE_KEYWORDS), re.IGNORECASE)
     

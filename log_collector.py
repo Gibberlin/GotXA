@@ -62,6 +62,12 @@ class LogCollector:
         offset = self.offsets.get(key, 0)
         
         try:
+            # Detect file truncation/rotation (e.g. container recreation)
+            file_size = log_file.stat().st_size
+            if offset > file_size:
+                logger.info(f"ℹ️ File truncated or rotated: {log_file} (offset {offset} > size {file_size}). Resetting offset.")
+                offset = 0
+
             with open(log_file, 'r') as f:
                 f.seek(offset)
                 lines = f.readlines()

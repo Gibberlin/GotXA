@@ -53,8 +53,18 @@ def init_database():
 
 def log_activity(activity_type, details):
     """Log activity to file and send to collector."""
+    # Extract client IP if inside a Flask request context
+    ip_str = ""
+    try:
+        if request:
+            client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+            ip_str = f" from {client_ip}"
+    except RuntimeError:
+        # Outside of Flask request context (e.g. app initialization)
+        pass
+
     timestamp = datetime.utcnow().isoformat()
-    log_entry = f"[{timestamp}] {activity_type}: {details}\n"
+    log_entry = f"[{timestamp}] {activity_type}: {details}{ip_str}\n"
     
     # Ensure log directory exists
     Path(LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
@@ -77,7 +87,7 @@ def log_activity(activity_type, details):
         log_json = {
             'timestamp': timestamp,
             'level': severity,
-            'message': f'{activity_type}: {details}',
+            'message': f'{activity_type}: {details}{ip_str}',
             'host': 'corp-portal-agent',
             'source_type': 'corporate'
         }
@@ -89,7 +99,7 @@ def log_activity(activity_type, details):
     except Exception as e:
         logger.debug(f"Failed to send to collector: {e}")
     
-    logger.info(f"{activity_type}: {details}")
+    logger.info(f"{activity_type}: {details}{ip_str}")
 
 @app.route('/', methods=['GET'])
 def index():

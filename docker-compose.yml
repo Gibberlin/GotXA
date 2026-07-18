@@ -18,7 +18,7 @@ services:
     networks:
       - security-control
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U siem_user"]
+      test: ["CMD-SHELL", "pg_isready -U siem_user -d siem_db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -33,6 +33,11 @@ services:
       - "5000:5000"
     environment:
       DATABASE_URL: postgresql://siem_user:siem_password@siem-postgres:5432/siem_db
+      SOAR_REAL_MODE: "true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    cap_add:
+      - NET_ADMIN
     networks:
       - security-control
       - corporate-net
