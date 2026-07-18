@@ -35,6 +35,7 @@ try:
     from models import db
     from api.ingress import ingress_bp
     from api.dashboard import dashboard_bp
+    from api.soar_api import soar_bp
     logger.info("✓ Successfully imported app components")
 except Exception as e:
     logger.error(f"✗ Failed to import app components: {e}", exc_info=True)
@@ -71,6 +72,7 @@ def create_app():
     # Register blueprints
     app.register_blueprint(ingress_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(soar_bp)
     
     # ========================================================================
     # ROOT ROUTE - SERVE DASHBOARD
@@ -90,6 +92,16 @@ def create_app():
         except Exception as e:
             logger.error(f"Error serving dashboard: {e}", exc_info=True)
             return jsonify({"error": "Internal server error"}), 500
+    
+    # ========================================================================
+    # LEGACY LOG INGESTION COMPATIBILITY ROUTE
+    # ========================================================================
+    
+    @app.route('/logs/ingest', methods=['POST'])
+    def legacy_ingest_logs():
+        """Route legacy log ingress requests to the new v1 API handler."""
+        from api.ingress import ingest_logs
+        return ingest_logs()
     
     # ========================================================================
     # HEALTH CHECK ENDPOINT
@@ -140,9 +152,25 @@ def create_app():
     with app.app_context():
         try:
             db.create_all()
-            logger.info("✓ Database tables initialized/verified")
+            # Auto-migrate: Add missing SOAR columns to pre-existing alerts table if they don't exist
+            db.session.execute(text("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'Open' NOT NULL;"))
+            db.session.execute(text("ALTER TABLE alerts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW() NOT NULL;"))
+            db.session.commit()
+            logger.info("✓ Database tables initialized/verified and schema migrated")
         except Exception as e:
-            logger.error(f"Database initialization error: {e}", exc_info=True)
+            db.session.rollback()
+            logger.error(f"Database initialization/migration error: {e}", exc_info=True)
+    
+    # Start SOAR engine background thread
+    try:
+        from soar_engine import SoarEngine
+        import soar_engine as soar_module
+        engine = SoarEngine(app)
+        engine.start()
+        soar_module.soar_engine_instance = engine
+        logger.info("✓ SOAR engine started")
+    except Exception as e:
+        logger.error(f"Failed to start SOAR engine: {e}", exc_info=True)
     
     return app
 

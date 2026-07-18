@@ -6,13 +6,15 @@ Provides analytics and visualization data for the frontend.
 from flask import Blueprint, jsonify
 from datetime import datetime, timedelta
 import logging
-from sqlalchemy import func
 
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models import db, Log, Alert
+from models import db, Log, Alert, SoarAction
+
+# Use db.func instead of importing sqlalchemy.func directly
+func = db.func
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +74,23 @@ def dashboard_stats():
         
         logs_by_host_dict = {host: count for host, count in logs_by_host}
         
+        # SOAR stats
+        total_soar_actions = db.session.query(func.count(SoarAction.id)).scalar() or 0
+        auto_resolved = db.session.query(func.count(Alert.id)).filter(
+            Alert.status == 'Resolved'
+        ).scalar() or 0
+        active_blocks = db.session.query(func.count(SoarAction.id)).filter(
+            SoarAction.action_type == 'ip_block',
+            SoarAction.status == 'completed'
+        ).scalar() or 0
+        
+        # SOAR actions by type
+        soar_by_type = db.session.query(
+            SoarAction.action_type,
+            func.count(SoarAction.id).label('count')
+        ).group_by(SoarAction.action_type).all()
+        soar_by_type_dict = {atype: count for atype, count in soar_by_type}
+        
         return jsonify({
             "status": "success",
             "data": {
@@ -81,6 +100,10 @@ def dashboard_stats():
                 "alerts_by_severity": alerts_by_severity_dict,
                 "alerts_by_status": alerts_by_status_dict,
                 "logs_by_host": logs_by_host_dict,
+                "total_soar_actions": total_soar_actions,
+                "auto_resolved": auto_resolved,
+                "active_blocks": active_blocks,
+                "soar_actions_by_type": soar_by_type_dict,
                 "timestamp": datetime.utcnow().isoformat()
             }
         }), 200
@@ -105,12 +128,14 @@ def dashboard_recent():
     try:
         recent_logs = Log.query.order_by(Log.created_at.desc()).limit(20).all()
         recent_alerts = Alert.query.order_by(Alert.created_at.desc()).limit(20).all()
+        recent_soar_actions = SoarAction.query.order_by(SoarAction.created_at.desc()).limit(20).all()
         
         return jsonify({
             "status": "success",
             "data": {
                 "recent_logs": [log.to_dict() for log in recent_logs],
                 "recent_alerts": [alert.to_dict() for alert in recent_alerts],
+                "recent_soar_actions": [action.to_dict() for action in recent_soar_actions],
                 "timestamp": datetime.utcnow().isoformat()
             }
         }), 200
