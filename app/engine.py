@@ -1,13 +1,49 @@
 """
 Security detection engine with regex-based rule definitions and alert logic.
+Includes network segmentation enforcement and rogue device detection.
 """
 
 import re
 import logging
+import ipaddress
 from datetime import datetime, timedelta
 from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# NETWORK SEGMENTATION RULES
+# ============================================================================
+
+AUTHORIZED_SUBNETS = [
+    ipaddress.ip_network('172.24.0.0/16'),  # Corporate network
+    ipaddress.ip_network('172.25.0.0/16'),  # OT/SCADA network
+    ipaddress.ip_network('172.23.0.0/16'),  # Security control network
+]
+
+def is_authorized_host(host_ip: str) -> bool:
+    """
+    Check if a host IP is within authorized subnets.
+    
+    Args:
+        host_ip: IP address or hostname (if hostname, treat as authorized)
+    
+    Returns:
+        True if IP is in authorized subnets or hostname provided, False if rogue
+    """
+    if not host_ip or not host_ip.replace('.', '').isdigit():
+        # If it's a hostname (not an IP), consider it authorized for now
+        return True
+    
+    try:
+        ip = ipaddress.ip_address(host_ip)
+        for subnet in AUTHORIZED_SUBNETS:
+            if ip in subnet:
+                return True
+        return False
+    except ValueError:
+        # Invalid IP address
+        return True
 
 # ============================================================================
 # RULE DEFINITIONS & REGEX PATTERNS
@@ -119,6 +155,13 @@ class AlertEngine:
         alerts = []
         
         try:
+            # RULE 0: Network Segmentation - Rogue Device Detection (CRITICAL)
+            if not is_authorized_host(host):
+                alerts.append(('CRITICAL', 'Rogue Device Detected', 
+                    f'WARNING: Unregistered Device Detected on Network. '
+                    f'Source IP {host} is outside authorized subnets (172.24.X.X, 172.25.X.X)'))
+                logger.warning(f"🚨 ROGUE DEVICE ALERT: {host} is not in authorized subnets")
+            
             # Rule 1: Brute Force Detection
             if self.rules.BRUTE_FORCE_PATTERN.search(message):
                 alerts.append(('HIGH', 'Brute Force Attempt', f'Pattern detected: {message[:80]}'))

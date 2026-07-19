@@ -80,18 +80,133 @@ def create_app():
     
     @app.route('/', methods=['GET'])
     def dashboard():
-        """Serve the main SIEM operations dashboard."""
+        """Serve the main SIEM operations dashboard from frontend directory."""
         try:
-            dashboard_path = os.path.join(BASE_DIR, 'static', 'dashboard', 'index.html')
-            logger.debug(f"Loading dashboard from: {dashboard_path}")
-            with open(dashboard_path, 'r', encoding='utf-8') as f:
+            frontend_path = '/app/frontend/siem_dashboard/index.html'
+            logger.debug(f"Loading dashboard from: {frontend_path}")
+            with open(frontend_path, 'r', encoding='utf-8') as f:
                 return f.read(), 200, {'Content-Type': 'text/html; charset=utf-8'}
         except FileNotFoundError:
-            logger.error(f"Dashboard not found at: {dashboard_path}")
+            logger.error(f"Dashboard not found at: {frontend_path}")
             return jsonify({"error": "Dashboard not found"}), 404
         except Exception as e:
             logger.error(f"Error serving dashboard: {e}", exc_info=True)
             return jsonify({"error": "Internal server error"}), 500
+    
+    # ========================================================================
+    # SCADA DASHBOARD ROUTE
+    # ========================================================================
+    
+    @app.route('/scada', methods=['GET'])
+    def scada_dashboard():
+        """Serve the SCADA HMI dashboard from frontend directory."""
+        try:
+            frontend_path = '/app/frontend/scada_dashboard/index.html'
+            logger.debug(f"Loading SCADA dashboard from: {frontend_path}")
+            with open(frontend_path, 'r', encoding='utf-8') as f:
+                return f.read(), 200, {'Content-Type': 'text/html; charset=utf-8'}
+        except FileNotFoundError:
+            logger.error(f"SCADA dashboard not found at: {frontend_path}")
+            return jsonify({"error": "SCADA dashboard not found"}), 404
+        except Exception as e:
+            logger.error(f"Error serving SCADA dashboard: {e}", exc_info=True)
+            return jsonify({"error": "Internal server error"}), 500
+    
+    # ========================================================================
+    # SCADA GATEWAY PROXY ROUTES - FORWARD TO PORT 5002
+    # ========================================================================
+    
+    @app.route('/api/modbus', methods=['GET'])
+    def modbus_proxy():
+        """Proxy Modbus data from SCADA gateway (port 5002)."""
+        try:
+            import requests
+            response = requests.get('http://ot-scada-gateway:5002/api/modbus', timeout=5)
+            return jsonify(response.json()), response.status_code
+        except Exception as e:
+            logger.error(f"Error proxying to SCADA gateway: {e}")
+            return jsonify({
+                "error": "Cannot connect to SCADA gateway",
+                "refinery_1": {"status": "offline", "temperature": 0, "pressure": 0},
+                "refinery_2": {"status": "offline", "flow_rate": 0}
+            }), 503
+    
+    @app.route('/api/modbus/refinery-1', methods=['GET'])
+    def modbus_refinery1_proxy():
+        """Proxy Refinery-1 Modbus data from SCADA gateway."""
+        try:
+            import requests
+            response = requests.get('http://ot-scada-gateway:5002/api/modbus/refinery-1', timeout=5)
+            return jsonify(response.json()), response.status_code
+        except Exception as e:
+            logger.error(f"Error proxying to SCADA gateway: {e}")
+            return jsonify({"status": "offline", "temperature": 0, "pressure": 0}), 503
+    
+    @app.route('/api/modbus/refinery-2', methods=['GET'])
+    def modbus_refinery2_proxy():
+        """Proxy Refinery-2 Modbus data from SCADA gateway."""
+        try:
+            import requests
+            response = requests.get('http://ot-scada-gateway:5002/api/modbus/refinery-2', timeout=5)
+            return jsonify(response.json()), response.status_code
+        except Exception as e:
+            logger.error(f"Error proxying to SCADA gateway: {e}")
+            return jsonify({"status": "offline", "flow_rate": 0}), 503
+    
+    # ========================================================================
+    # DASHBOARD DATA API - FOR FRONTEND VISUALIZATION
+    # ========================================================================
+    
+    @app.route('/api/dashboard-data', methods=['GET'])
+    def dashboard_data():
+        """Get aggregated data for the dashboard (legacy format)."""
+        try:
+            from models import Log, Alert
+            from sqlalchemy import func
+            
+            # Total stats
+            total_logs = db.session.query(func.count(Log.id)).scalar() or 0
+            total_alerts = db.session.query(func.count(Alert.id)).scalar() or 0
+            
+            # Logs by level
+            logs_by_level = db.session.query(
+                Log.level,
+                func.count(Log.id).label('count')
+            ).group_by(Log.level).all()
+            logs_by_level_dict = {level: count for level, count in logs_by_level}
+            
+            # Alerts by severity
+            alerts_by_severity = db.session.query(
+                Alert.severity,
+                func.count(Alert.id).label('count')
+            ).group_by(Alert.severity).all()
+            alerts_by_severity_dict = {sev: count for sev, count in alerts_by_severity}
+            
+            # Logs by host (top 10)
+            logs_by_host = db.session.query(
+                Log.host,
+                func.count(Log.id).label('count')
+            ).group_by(Log.host).order_by(func.count(Log.id).desc()).limit(10).all()
+            logs_by_host_dict = {host: count for host, count in logs_by_host}
+            
+            # Recent logs (last 20)
+            recent_logs = Log.query.order_by(Log.created_at.desc()).limit(20).all()
+            
+            # Recent alerts (last 20)
+            recent_alerts = Alert.query.order_by(Alert.created_at.desc()).limit(20).all()
+            
+            return jsonify({
+                "total_logs": total_logs,
+                "total_alerts": total_alerts,
+                "logs_by_level": logs_by_level_dict,
+                "alerts_by_severity": alerts_by_severity_dict,
+                "logs_by_host": logs_by_host_dict,
+                "recent_logs": [log.to_dict() for log in recent_logs],
+                "recent_alerts": [alert.to_dict() for alert in recent_alerts]
+            }), 200
+        except Exception as e:
+            logger.error(f"Error in dashboard_data: {e}", exc_info=True)
+            return jsonify({"error": str(e)}), 500
     
     # ========================================================================
     # LEGACY LOG INGESTION COMPATIBILITY ROUTE
@@ -186,7 +301,9 @@ if __name__ == '__main__':
     logger.info("🔒 SIEM/SOAR Operations Center - STARTING (Development Mode)")
     logger.info("=" * 70)
     logger.info("📊 Dashboard:     http://localhost:5000/")
+    logger.info("🎯 SCADA HMI:     http://localhost:5000/scada")
     logger.info("🔌 API v1:        http://localhost:5000/api/v1/")
+    logger.info("📡 Modbus API:    http://localhost:5000/api/modbus (proxied to 5002)")
     logger.info("❤️  Health Check:  http://localhost:5000/health")
     logger.info("=" * 70)
     

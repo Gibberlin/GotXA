@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim
+FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bash coreutils netcat-traditional \
@@ -6,10 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY log_generator.sh .
+COPY modbus_plc_server.py .
 
-RUN sed -i 's/\r$//' ./log_generator.sh
+RUN pip install --no-cache-dir \
+    pymodbus==3.5.0
 
-RUN chmod +x ./log_generator.sh
+RUN chmod +x ./modbus_plc_server.py
 
-CMD ["/bin/bash", "./log_generator.sh"]
+CMD ["python3", "./modbus_plc_server.py"]

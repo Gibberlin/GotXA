@@ -12,7 +12,7 @@ import subprocess
 import sqlite3
 import requests
 from datetime import datetime
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template_string, send_from_directory
 from pathlib import Path
 
 app = Flask(__name__)
@@ -103,44 +103,17 @@ def log_activity(activity_type, details):
 
 @app.route('/', methods=['GET'])
 def index():
-    """Serve the vulnerable login dashboard."""
-    html = '''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Corporate Portal - Vulnerable Auth</title>
-        <style>
-            body { font-family: Arial; background: #f5f5f5; padding: 50px; }
-            .container { max-width: 500px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-            h1 { color: #333; text-align: center; }
-            .form-group { margin: 15px 0; }
-            label { display: block; margin-bottom: 5px; font-weight: bold; }
-            input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-            button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-            button:hover { background: #0056b3; }
-            .warning { color: #d32f2f; font-size: 12px; margin-top: 20px; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>🔓 Corporate Authentication Portal</h1>
-            <form method="POST" action="/login">
-                <div class="form-group">
-                    <label>Username:</label>
-                    <input type="text" name="username" placeholder="e.g., admin">
-                </div>
-                <div class="form-group">
-                    <label>Password:</label>
-                    <input type="password" name="password" placeholder="e.g., SecureP@ssw0rd">
-                </div>
-                <button type="submit">Login</button>
-            </form>
-            <p class="warning">⚠️ WARNING: This is a VULNERABLE application for cyber range testing only!</p>
-        </div>
-    </body>
-    </html>
-    '''
-    return html, 200, {'Content-Type': 'text/html'}
+    """Serve the vulnerable login dashboard from frontend directory."""
+    frontend_path = '/app/frontend/corp_portal'
+    try:
+        with open(f'{frontend_path}/index.html', 'r', encoding='utf-8') as f:
+            return f.read(), 200, {'Content-Type': 'text/html; charset=utf-8'}
+    except FileNotFoundError:
+        logger.error(f"Frontend file not found at {frontend_path}/index.html")
+        return jsonify({"error": "Frontend not found"}), 404
+    except Exception as e:
+        logger.error(f"Error serving frontend: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/login', methods=['POST'])
 def login_vulnerable():
@@ -214,6 +187,16 @@ def diagnostic_vulnerable():
 def health():
     """Health check endpoint."""
     return jsonify({"status": "healthy", "service": "corp-portal-agent"}), 200
+
+@app.route('/<path:path>', methods=['GET'])
+def serve_static(path):
+    """Serve static files from frontend directory."""
+    frontend_path = '/app/frontend/corp_portal'
+    try:
+        return send_from_directory(frontend_path, path)
+    except Exception as e:
+        logger.debug(f"Static file not found: {path}")
+        return jsonify({"error": "Not found"}), 404
 
 if __name__ == '__main__':
     init_database()

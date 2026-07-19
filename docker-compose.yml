@@ -36,6 +36,8 @@ services:
       SOAR_REAL_MODE: "true"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./frontend:/app/frontend
+      - logs_shared:/logs
     cap_add:
       - NET_ADMIN
     networks:
@@ -77,6 +79,7 @@ services:
     ports:
       - "5001:5001"
     volumes:
+      - ./frontend:/app/frontend
       - logs_shared:/logs
     networks:
       - corporate-net
@@ -95,22 +98,26 @@ services:
 
   # =========================================================================
   # OT/SCADA NETWORK (172.25.0.0/16)
-  # Simulated operational technology agents
+  # Simulated operational technology agents with Modbus
   # =========================================================================
   
   ot-scada-gateway:
     build:
       context: .
-      dockerfile: Dockerfile.agent
+      dockerfile: Dockerfile.scada
     container_name: ot-scada-gateway
     ports:
       - "5002:5002"
     environment:
-      AGENT_NAME: ot-scada-gateway
+      FLASK_ENV: production
     volumes:
       - logs_shared:/logs
     networks:
       - operational-net
+      - security-control
+    depends_on:
+      - ot-plc-refinery-1
+      - ot-plc-refinery-2
     restart: unless-stopped
 
   ot-plc-refinery-1:
