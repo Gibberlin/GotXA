@@ -1,3 +1,6 @@
+<img width="2816" height="1536" alt="GXA blank" src="https://github.com/user-attachments/assets/cd9723c9-01ec-4349-94ec-790f4c64e9d3" />
+
+
 # Vulnerable Cyber Range — Critical Infrastructure SOC Simulation
 
 ![Cyber Range Cover Image/Banner](path/to/banner-image.png)
