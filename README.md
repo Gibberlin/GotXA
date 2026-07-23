@@ -3,7 +3,7 @@
 
 # Vulnerable Cyber Range — Critical Infrastructure SOC Simulation
 
-[Cyber Range Cover Image/Banner](path/to/banner-image.png)
+Cyber Range Cover Image/Banner
 *A self-contained Docker environment simulating a critical infrastructure organization (e.g., a refinery like NRL/OIL), designed to launch real attacks and demonstrate automated detection and response.*
 
 ## Contributors
