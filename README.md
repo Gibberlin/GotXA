@@ -9,7 +9,7 @@
 ## Contributors
 
 - Syed Yashin Hussain [GitHub](https://github.com/Gibberlin) — Project lead and SIEM architect. - Avirup Roy [GitHub](https://github.com/aviruproyy-hub) — Lead SOAR architect and Documentation.
-- { Add your names here. }
+- - Antara Deb [GitHub](https://github.com/antaradeb0045) — SIEM Contributor, Detection Rules, Log Analysis, and Documentation.
 - Community contributors — Improvements, testing, and issue fixes
 
 ## Core Concepts
