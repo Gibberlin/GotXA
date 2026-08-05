@@ -14,7 +14,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_DIR = os.path.join(BASE_DIR, '..')
 sys.path.insert(0, APP_DIR)
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 from sqlalchemy import text
 
 # ============================================================================
@@ -92,6 +92,16 @@ def create_app():
         except Exception as e:
             logger.error(f"Error serving dashboard: {e}", exc_info=True)
             return jsonify({"error": "Internal server error"}), 500
+
+    @app.route('/assets/<path:filename>', methods=['GET'])
+    def assets(filename):
+        """Serve the React build JS/CSS assets for the new SIEM dashboard."""
+        try:
+            asset_dir = '/app/frontend/siem_dashboard/assets'
+            return send_from_directory(asset_dir, filename)
+        except Exception as e:
+            logger.error(f"Asset not found: {filename} -> {e}")
+            return jsonify({"error": "Asset not found"}), 404
     
     # ========================================================================
     # SCADA DASHBOARD ROUTE
