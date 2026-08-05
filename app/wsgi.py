@@ -12,6 +12,7 @@ from datetime import datetime
 # Setup paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_DIR = os.path.join(BASE_DIR, '..')
+REPO_ROOT = os.path.dirname(APP_DIR)
 sys.path.insert(0, APP_DIR)
 
 from flask import Flask, jsonify, send_from_directory
@@ -80,12 +81,12 @@ def create_app():
     
     @app.route('/', methods=['GET'])
     def dashboard():
-        """Serve the main SIEM operations dashboard from frontend directory."""
+        """Serve the main SIEM operations dashboard from the repo frontend directory."""
         try:
-            frontend_path = '/app/frontend/siem_dashboard/index.html'
+            frontend_dir = os.path.join(REPO_ROOT, 'frontend', 'siem_dashboard')
+            frontend_path = os.path.join(frontend_dir, 'index.html')
             logger.debug(f"Loading dashboard from: {frontend_path}")
-            with open(frontend_path, 'r', encoding='utf-8') as f:
-                return f.read(), 200, {'Content-Type': 'text/html; charset=utf-8'}
+            return send_from_directory(frontend_dir, 'index.html')
         except FileNotFoundError:
             logger.error(f"Dashboard not found at: {frontend_path}")
             return jsonify({"error": "Dashboard not found"}), 404
@@ -97,7 +98,7 @@ def create_app():
     def assets(filename):
         """Serve the React build JS/CSS assets for the new SIEM dashboard."""
         try:
-            asset_dir = '/app/frontend/siem_dashboard/assets'
+            asset_dir = os.path.join(REPO_ROOT, 'frontend', 'siem_dashboard', 'assets')
             return send_from_directory(asset_dir, filename)
         except Exception as e:
             logger.error(f"Asset not found: {filename} -> {e}")
@@ -109,12 +110,12 @@ def create_app():
     
     @app.route('/scada', methods=['GET'])
     def scada_dashboard():
-        """Serve the SCADA HMI dashboard from frontend directory."""
+        """Serve the SCADA HMI dashboard from the repo frontend directory."""
         try:
-            frontend_path = '/app/frontend/scada_dashboard/index.html'
+            frontend_dir = os.path.join(REPO_ROOT, 'frontend', 'scada_dashboard')
+            frontend_path = os.path.join(frontend_dir, 'index.html')
             logger.debug(f"Loading SCADA dashboard from: {frontend_path}")
-            with open(frontend_path, 'r', encoding='utf-8') as f:
-                return f.read(), 200, {'Content-Type': 'text/html; charset=utf-8'}
+            return send_from_directory(frontend_dir, 'index.html')
         except FileNotFoundError:
             logger.error(f"SCADA dashboard not found at: {frontend_path}")
             return jsonify({"error": "SCADA dashboard not found"}), 404
