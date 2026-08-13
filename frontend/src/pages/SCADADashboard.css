@@ -1,0 +1,91 @@
+.scada-dashboard {
+  background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+  min-height: 100vh;
+  padding: 20px;
+  color: #e0e0e0;
+}
+
+.scada-dashboard header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto 40px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #00d4ff;
+}
+
+.scada-dashboard h1 {
+  color: #00d4ff;
+  font-size: 2em;
+}
+
+.nav-link {
+  color: #00d4ff;
+  text-decoration: none;
+  padding: 10px 20px;
+  border: 1px solid #00d4ff;
+  border-radius: 6px;
+  transition: all 0.3s;
+}
+
+.nav-link:hover {
+  background: #00d4ff;
+  color: #0a0e27;
+}
+
+.error {
+  background: rgba(255, 0, 0, 0.1);
+  border: 2px solid #ff0000;
+  color: #ff6666;
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.gauge-card {
+  background: linear-gradient(135deg, #0f3460 0%, #16213e 100%);
+  border: 2px solid #00d4ff;
+  border-radius: 12px;
+  padding: 25px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 212, 255, 0.2);
+}
+
+.gauge-card h3 {
+  color: #00d4ff;
+  margin-bottom: 15px;
+  font-size: 1.1em;
+}
+
+.gauge-card .value {
+  font-size: 2.5em;
+  font-weight: bold;
+  color: #00ff00;
+  margin-bottom: 10px;
+  font-family: monospace;
+}
+
+.gauge-card .range {
+  color: #888;
+  font-size: 0.9em;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  color: #888;
+}

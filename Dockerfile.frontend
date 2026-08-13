@@ -1,0 +1,55 @@
+# Build stage - Corp Portal
+FROM node:18-alpine AS build-corp
+WORKDIR /build/corp_portal
+COPY frontend/corp_portal/package*.json ./
+RUN npm ci
+COPY frontend/corp_portal/src ./src
+COPY frontend/corp_portal/index.html ./
+COPY frontend/corp_portal/vite.config.js ./
+RUN npm run build
+
+# Build stage - SCADA Dashboard
+FROM node:18-alpine AS build-scada
+WORKDIR /build/scada_dashboard
+COPY frontend/scada_dashboard/package*.json ./
+RUN npm ci
+COPY frontend/scada_dashboard/src ./src
+COPY frontend/scada_dashboard/index.html ./
+COPY frontend/scada_dashboard/vite.config.js ./
+RUN npm run build
+
+# Build stage - SIEM Dashboard
+FROM node:18-alpine AS build-siem
+WORKDIR /build/siem_dashboard
+COPY frontend/siem_dashboard/package*.json ./
+RUN npm ci
+COPY frontend/siem_dashboard/src ./src
+COPY frontend/siem_dashboard/index.html ./
+COPY frontend/siem_dashboard/vite.config.js ./
+RUN npm run build
+
+# Production stage - NGINX
+FROM nginx:alpine
+
+# Create directory structure for all three apps
+RUN mkdir -p /usr/share/nginx/html/corp_portal \
+             /usr/share/nginx/html/scada_dashboard \
+             /usr/share/nginx/html/siem_dashboard
+
+# Copy built apps from build stages
+COPY --from=build-corp /build/corp_portal/dist/corp /usr/share/nginx/html/corp_portal
+COPY --from=build-scada /build/scada_dashboard/dist/scada /usr/share/nginx/html/scada_dashboard
+COPY --from=build-siem /build/siem_dashboard/dist/siem /usr/share/nginx/html/siem_dashboard
+
+# Copy NGINX configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Expose port 80
+EXPOSE 80
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost/health || exit 1
+
+# Start NGINX
+CMD ["nginx", "-g", "daemon off;"]

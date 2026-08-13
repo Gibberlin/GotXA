@@ -1,0 +1,83 @@
+.siem-container {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  min-height: 100vh;
+  color: #e0e0e0;
+  padding: 40px 20px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.siem-container header {
+  text-align: center;
+  margin-bottom: 40px;
+  padding-bottom: 20px;
+  border-bottom: 3px solid #00d4ff;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.siem-container h1 {
+  font-size: 2.2em;
+  color: #00d4ff;
+  margin-bottom: 10px;
+}
+
+.siem-container header p {
+  color: #888;
+  font-size: 0.95em;
+}
+
+.dashboard-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.card {
+  background: linear-gradient(135deg, #0f3460 0%, #16213e 100%);
+  border: 2px solid #00d4ff;
+  border-radius: 12px;
+  padding: 30px;
+  box-shadow: 0 8px 32px rgba(0, 212, 255, 0.2);
+}
+
+.card h2 {
+  color: #00d4ff;
+  margin-bottom: 15px;
+  font-size: 1.3em;
+}
+
+.card p {
+  color: #ccc;
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+
+.card .info {
+  color: #888;
+  font-size: 0.9em;
+  font-style: italic;
+}
+
+.card ul {
+  list-style: none;
+  color: #ccc;
+}
+
+.card li {
+  padding: 8px 0;
+  border-bottom: 1px solid #1a4d6d;
+}
+
+.card li:before {
+  content: '✓ ';
+  color: #00ff00;
+  font-weight: bold;
+  margin-right: 8px;
+}
+
+.card li:last-child {
+  border-bottom: none;
+}

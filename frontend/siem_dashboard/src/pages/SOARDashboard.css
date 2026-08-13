@@ -1,0 +1,244 @@
+.soar-dashboard {
+  max-width: 1400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.soar-tabs {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 25px;
+  flex-wrap: wrap;
+}
+
+.soar-tab {
+  padding: 12px 24px;
+  background: rgba(0, 212, 255, 0.1);
+  border: 2px solid #00d4ff;
+  color: #00d4ff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.soar-tab:hover {
+  background: rgba(0, 212, 255, 0.2);
+}
+
+.soar-tab.active {
+  background: #00d4ff;
+  color: #1a1a2e;
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+}
+
+.soar-error {
+  background: rgba(255, 0, 0, 0.1);
+  border: 2px solid #ff0000;
+  color: #ff6666;
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+}
+
+.soar-section {
+  background: linear-gradient(135deg, #0f3460 0%, #16213e 100%);
+  border: 2px solid #00d4ff;
+  border-radius: 12px;
+  padding: 25px;
+  box-shadow: 0 8px 32px rgba(0, 212, 255, 0.2);
+}
+
+.soar-section h2 {
+  color: #00d4ff;
+  margin-bottom: 20px;
+  font-size: 1.3em;
+}
+
+/* Active Mitigations */
+.mitigations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.mitigation-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid #00ff00;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.2);
+}
+
+.mit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.mit-type {
+  font-weight: bold;
+  color: #00d4ff;
+  font-size: 1.1em;
+}
+
+.mit-status {
+  font-size: 0.8em;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-weight: bold;
+}
+
+.mit-status.active {
+  background: #00ff00;
+  color: #000;
+}
+
+.mit-target {
+  color: #ccc;
+  margin-bottom: 10px;
+  font-family: monospace;
+}
+
+.mit-countdown {
+  color: #ffa500;
+  font-weight: bold;
+  font-size: 0.95em;
+  padding: 10px;
+  background: rgba(255, 165, 0, 0.1);
+  border-radius: 4px;
+  text-align: center;
+}
+
+/* Action History */
+.actions-table {
+  overflow-x: auto;
+}
+
+.actions-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.actions-table thead {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.actions-table th {
+  color: #00d4ff;
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 2px solid #00d4ff;
+}
+
+.actions-table td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(0, 212, 255, 0.1);
+  color: #ccc;
+}
+
+.actions-table tr.status-success {
+  background: rgba(0, 255, 0, 0.05);
+}
+
+.actions-table tr.status-failed {
+  background: rgba(255, 0, 0, 0.05);
+}
+
+.actions-table code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 4px 8px;
+  border-radius: 3px;
+  color: #00ff00;
+  font-family: monospace;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 0.8em;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.status-badge.success {
+  background: #00ff00;
+  color: #000;
+}
+
+.status-badge.failed {
+  background: #ff4d5e;
+  color: #fff;
+}
+
+/* Playbooks */
+.playbooks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.playbook-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid #9d7bff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 0 10px rgba(157, 123, 255, 0.2);
+}
+
+.playbook-card h3 {
+  color: #9d7bff;
+  margin-bottom: 10px;
+  font-family: monospace;
+  font-size: 1.05em;
+}
+
+.pb-desc {
+  color: #ccc;
+  margin-bottom: 15px;
+  line-height: 1.5;
+}
+
+.pb-triggers {
+  color: #888;
+  font-size: 0.9em;
+}
+
+.pb-triggers strong {
+  color: #00d4ff;
+}
+
+.pb-triggers ul {
+  list-style: none;
+  margin-top: 8px;
+  padding-left: 0;
+}
+
+.pb-triggers li {
+  padding: 4px 0;
+  padding-left: 20px;
+  position: relative;
+}
+
+.pb-triggers li:before {
+  content: '▶';
+  position: absolute;
+  left: 0;
+  color: #5fd4d6;
+}
+
+.soar-loading {
+  text-align: center;
+  padding: 40px;
+  color: #888;
+  font-size: 1.1em;
+}
+
+.no-data {
+  text-align: center;
+  padding: 20px;
+  color: #888;
+}
