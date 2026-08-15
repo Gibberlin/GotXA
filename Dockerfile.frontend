@@ -2,7 +2,7 @@
 FROM node:18-alpine AS build-corp
 WORKDIR /build/corp_portal
 COPY frontend/corp_portal/package*.json ./
-RUN npm ci
+RUN npm install
 COPY frontend/corp_portal/src ./src
 COPY frontend/corp_portal/index.html ./
 COPY frontend/corp_portal/vite.config.js ./
@@ -12,7 +12,7 @@ RUN npm run build
 FROM node:18-alpine AS build-scada
 WORKDIR /build/scada_dashboard
 COPY frontend/scada_dashboard/package*.json ./
-RUN npm ci
+RUN npm install
 COPY frontend/scada_dashboard/src ./src
 COPY frontend/scada_dashboard/index.html ./
 COPY frontend/scada_dashboard/vite.config.js ./
@@ -22,7 +22,7 @@ RUN npm run build
 FROM node:18-alpine AS build-siem
 WORKDIR /build/siem_dashboard
 COPY frontend/siem_dashboard/package*.json ./
-RUN npm ci
+RUN npm install
 COPY frontend/siem_dashboard/src ./src
 COPY frontend/siem_dashboard/index.html ./
 COPY frontend/siem_dashboard/vite.config.js ./

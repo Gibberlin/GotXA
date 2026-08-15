@@ -16,7 +16,7 @@ class User(db.Model):
     username = db.Column(db.String(255), unique=True, nullable=False, index=True)
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(50), default='analyst')  # admin, soc_manager, analyst
+    role = db.Column(db.String(50), default='analyst')
     team_id = db.Column(db.String(36), db.ForeignKey('teams.id'))
     is_active = db.Column(db.Boolean, default=True)
     mfa_enabled = db.Column(db.Boolean, default=False)
@@ -43,31 +43,26 @@ class Alert(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     alert_id = db.Column(db.String(50), unique=True, nullable=False, index=True)
     title = db.Column(db.String(255), nullable=False)
-    severity = db.Column(db.String(20), nullable=False, index=True)  # critical, high, medium, low, info
-    status = db.Column(db.String(50), default='open', index=True)  # open, investigating, dismissed, resolved
+    severity = db.Column(db.String(20), nullable=False, index=True)
+    status = db.Column(db.String(50), default='open', index=True)
     source = db.Column(db.String(255), nullable=False, index=True)
     rule_id = db.Column(db.String(255), index=True)
     
-    # Assignment and ownership
     assignee_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=True, index=True)
     team_id = db.Column(db.String(36), db.ForeignKey('teams.id'), nullable=True, index=True)
     
-    # Suppression
     is_suppressed = db.Column(db.Boolean, default=False)
     suppression_reason = db.Column(db.Text)
     suppression_expires_at = db.Column(db.DateTime, nullable=True)
-    suppression_scope = db.Column(db.String(50))  # alert, rule, entity
+    suppression_scope = db.Column(db.String(50))
     
-    # Evidence and details
     raw_event = db.Column(db.JSON)
     normalized_event = db.Column(db.JSON)
-    entities = db.Column(db.JSON)  # IOCs, ips, domains, users, etc.
+    entities = db.Column(db.JSON)
     mitre_tactics = db.Column(db.JSON)
     
-    # Incident association
     incident_id = db.Column(db.String(36), db.ForeignKey('incidents.id'), nullable=True, index=True)
     
-    # Timestamps
     timestamp = db.Column(db.DateTime, nullable=False, index=True)
     detected_at = db.Column(db.DateTime, default=datetime.utcnow)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -85,26 +80,22 @@ class Incident(db.Model):
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
     
-    status = db.Column(db.String(50), default='open', index=True)  # open, investigating, contained, resolved, closed
-    severity = db.Column(db.String(20), nullable=False)  # critical, high, medium, low
+    status = db.Column(db.String(50), default='open', index=True)
+    severity = db.Column(db.String(20), nullable=False)
     priority = db.Column(db.String(20), default='medium')
     
-    # Ownership
     owner_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=True)
     team_id = db.Column(db.String(36), db.ForeignKey('teams.id'), nullable=True)
     
-    # Analysis
     root_cause = db.Column(db.Text)
     affected_assets = db.Column(db.JSON)
     response_actions = db.Column(db.JSON)
     mitre_tactics = db.Column(db.JSON)
     
-    # Closure tracking
     resolution_notes = db.Column(db.Text)
     closure_reason = db.Column(db.String(255))
     lessons_learned = db.Column(db.Text)
     
-    # Timestamps
     detected_at = db.Column(db.DateTime, nullable=False)
     contained_at = db.Column(db.DateTime, nullable=True)
     resolved_at = db.Column(db.DateTime, nullable=True)
@@ -125,7 +116,7 @@ class Task(db.Model):
     incident_id = db.Column(db.String(36), db.ForeignKey('incidents.id'), nullable=False)
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
-    status = db.Column(db.String(50), default='open')  # open, in_progress, completed, blocked
+    status = db.Column(db.String(50), default='open')
     assigned_to_id = db.Column(db.String(36), db.ForeignKey('users.id'))
     due_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -139,10 +130,10 @@ class Evidence(db.Model):
     
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     incident_id = db.Column(db.String(36), db.ForeignKey('incidents.id'), nullable=False)
-    type = db.Column(db.String(50))  # file, screenshot, log, memory_dump
+    type = db.Column(db.String(50))
     source = db.Column(db.String(255))
-    url = db.Column(db.Text)  # S3, object storage, or file path
-    hash_value = db.Column(db.String(255))  # SHA-256 for integrity
+    url = db.Column(db.Text)
+    hash_value = db.Column(db.String(255))
     description = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -155,8 +146,8 @@ class PlaybookExecution(db.Model):
     playbook_id = db.Column(db.String(255), nullable=False, index=True)
     execution_id = db.Column(db.String(50), unique=True, nullable=False)
     
-    status = db.Column(db.String(50), default='pending')  # pending, approved, running, success, failed, rolled_back
-    mode = db.Column(db.String(50), default='live')  # live, dry_run
+    status = db.Column(db.String(50), default='pending')
+    mode = db.Column(db.String(50), default='live')
     
     inputs = db.Column(db.JSON)
     outputs = db.Column(db.JSON)
@@ -184,7 +175,7 @@ class AuditEvent(db.Model):
     resource_type = db.Column(db.String(100), nullable=False)
     resource_id = db.Column(db.String(255), nullable=False, index=True)
     
-    status = db.Column(db.String(50))  # success, failure, denied
+    status = db.Column(db.String(50))
     change_before = db.Column(db.JSON)
     change_after = db.Column(db.JSON)
     reason = db.Column(db.Text)
@@ -203,7 +194,7 @@ class Setting(db.Model):
     section = db.Column(db.String(100), nullable=False, index=True)
     key = db.Column(db.String(255), nullable=False)
     value = db.Column(db.JSON)
-    value_type = db.Column(db.String(50))  # string, int, bool, json
+    value_type = db.Column(db.String(50))
     is_sensitive = db.Column(db.Boolean, default=False)
     
     __table_args__ = (db.UniqueConstraint('section', 'key', name='uq_section_key'),)
@@ -225,7 +216,7 @@ class SettingChange(db.Model):
     change_ticket = db.Column(db.String(50))
     rollback_plan = db.Column(db.Text)
     
-    status = db.Column(db.String(50), default='approved')  # pending, approved, rejected, applied, rolled_back
+    status = db.Column(db.String(50), default='approved')
     requires_approval = db.Column(db.Boolean, default=False)
     approved_by_id = db.Column(db.String(36), db.ForeignKey('users.id'))
     
@@ -241,18 +232,103 @@ class Report(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     report_id = db.Column(db.String(50), unique=True, nullable=False)
     
-    type = db.Column(db.String(50))  # nist, executive, coverage, post_incident
-    format = db.Column(db.String(20))  # pdf, csv, xlsx
+    type = db.Column(db.String(50))
+    format = db.Column(db.String(20))
+    title = db.Column(db.String(255))
     
     requested_by_id = db.Column(db.String(36), db.ForeignKey('users.id'))
     
     date_from = db.Column(db.DateTime)
     date_to = db.Column(db.DateTime)
     
-    status = db.Column(db.String(50), default='pending')  # pending, generating, ready, failed
+    status = db.Column(db.String(50), default='pending', index=True)
+    file_path = db.Column(db.String(500))
+    file_size = db.Column(db.Integer, default=0)
     file_url = db.Column(db.String(500))
     
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    filters = db.Column(db.JSON)
+    data = db.Column(db.JSON)
+    error_message = db.Column(db.Text)
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    generated_at = db.Column(db.DateTime, nullable=True)
     completed_at = db.Column(db.DateTime, nullable=True)
     
     requested_by = db.relationship('User')
+
+class LogSource(db.Model):
+    """Data source connector ingestion metrics."""
+    __tablename__ = 'log_sources'
+    
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = db.Column(db.String(255), nullable=False, index=True)
+    connector_type = db.Column(db.String(100), nullable=False)
+    status = db.Column(db.String(50), default='healthy', index=True)
+    
+    last_event_timestamp = db.Column(db.DateTime)
+    ingestion_rate = db.Column(db.Integer, default=0)
+    drop_count = db.Column(db.Integer, default=0)
+    parse_error_count = db.Column(db.Integer, default=0)
+    ingest_delay_seconds = db.Column(db.Float, default=0)
+    total_events_ingested = db.Column(db.Integer, default=0)
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class ThreatIntelligenceFeed(db.Model):
+    """Threat intelligence feed status and metrics."""
+    __tablename__ = 'threat_intelligence_feeds'
+    
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    feed_id = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text)
+    status = db.Column(db.String(50), default='active', index=True)
+    
+    feed_url = db.Column(db.String(500))
+    last_sync = db.Column(db.DateTime, nullable=True)
+    sync_interval_hours = db.Column(db.Integer, default=24)
+    
+    indicators_count = db.Column(db.Integer, default=0)
+    last_error = db.Column(db.Text)
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class JITSession(db.Model):
+    """Just-In-Time (JIT) privilege elevation sessions."""
+    __tablename__ = 'jit_sessions'
+    
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    user_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False, index=True)
+    
+    reason = db.Column(db.Text, nullable=False)
+    ticket_id = db.Column(db.String(50))
+    
+    requested_at = db.Column(db.DateTime, default=datetime.utcnow)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    approved_by_id = db.Column(db.String(36), db.ForeignKey('users.id'))
+    
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    revoked_at = db.Column(db.DateTime, nullable=True)
+    
+    status = db.Column(db.String(50), default='pending', index=True)
+    elevated_role = db.Column(db.String(50))
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    user = db.relationship('User', foreign_keys=[user_id])
+    approved_by = db.relationship('User', foreign_keys=[approved_by_id])
+
+class SystemMetric(db.Model):
+    """Global system metrics (ingestion rate, source health, SLA risk)."""
+    __tablename__ = 'system_metrics'
+    
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    metric_name = db.Column(db.String(100), nullable=False, index=True)
+    metric_value = db.Column(db.Float, nullable=False)
+    metric_data = db.Column(db.JSON)
+    
+    recorded_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)

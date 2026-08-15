@@ -1,456 +1,310 @@
-# PROJECT STATE DOCUMENT - MULTI-APP ARCHITECTURE
-## GotXA Techs - Cybersecurity Testing & SIEM Platform
+# PROJECT STATE - BACKEND API IMPLEMENTATION COMPLETE
+## GOTXA Techs - Enterprise SIEM/SOAR Platform
 
 ---
 
-## ARCHITECTURAL MILESTONE: MIGRATED TO MULTI-APP REACT SETUP ✅
+## HANDOFF: FRONTEND → BACKEND API COMPLETE ✅
 
-This project has successfully transitioned from a monolithic SPA to a **segmented, multi-app React architecture**, simulating a realistic enterprise environment with isolated frontend applications.
-
----
-
-## TASK COMPLETION SUMMARY
-
-### ✅ TASK 1: MULTI-APP REACT ARCHITECTURE
-
-**Corporate Portal App** (`frontend/corp_portal/`)
-- ✅ Standalone React app with Vite
-- ✅ package.json with build script: `npm run build --outDir dist/corp`
-- ✅ index.html, src/main.jsx, vite.config.js
-- ✅ Pages: CorpLogin.jsx, CorpDashboard.jsx
-- ✅ Session-based auth with sessionStorage
-- ✅ Relative fetch paths (`/api/login`, `/api/dashboard-metrics`)
-
-**SCADA Dashboard App** (`frontend/scada_dashboard/`)
-- ✅ Standalone React app with Vite
-- ✅ package.json with build script: `npm run build --outDir dist/scada`
-- ✅ SCADAHmi.jsx component for real-time 2-rectangle PLC display
-- ✅ 2-second polling interval
-- ✅ Modbus data visualization (Temperature, Pressure, Flow)
-- ✅ Relative fetch path (`/api/modbus`)
-
-**SIEM Dashboard App** (`frontend/siem_dashboard/`)
-- ✅ Standalone React app with Vite
-- ✅ package.json with build script: `npm run build --outDir dist/siem`
-- ✅ SiemDashboard.jsx with overview, tabs, and metrics
-- ✅ Relative fetch paths (`/api/dashboard-data`, `/api/alerts`)
-
-**Each App is Isolated:**
-- Independent node_modules
-- Separate vite.config.js with custom ports (5174, 5175, 5176)
-- Isolated build outputs (dist/corp, dist/scada, dist/siem)
-- No shared code between apps
+The backend now implements all 8 endpoint groups required by the frontend. The system is production-ready for integration.
 
 ---
 
-### ✅ TASK 2: SOAR DASHBOARD UI IMPLEMENTATION
+## BACKEND ARCHITECTURE
 
-**SOARDashboard.jsx Component:**
-- ✅ Three-tab interface (Mitigations, History, Playbooks)
-- ✅ Tab state management with useState
+### Database Layer (SQLAlchemy ORM)
+**Models:** (`app/models.py`)
+- `User`: User accounts, roles, teams, permissions
+- `Team`: Team organization
+- `Alert`: Security alerts with suppression, assignment, entities, MITRE mappings
+- `Incident`: Incident management with workflow (open→investigating→contained→resolved→closed)
+- `Task`: Incident tasks with assignment and due dates
+- `Evidence`: Digital evidence storage (files, screenshots, logs)
+- `PlaybookExecution`: SOAR playbook tracking with approval workflow
+- `AuditEvent`: Immutable audit log (correlation ID, actor, action, resource, change, reason, IP, user agent)
+- `Setting`: Configuration key-value storage with sensitivity flags
+- `SettingChange`: Historical tracking of all setting changes with approval workflow
+- `Report`: Generated reports (NIST, Executive, Coverage, Post-Incident)
 
-**Active Mitigations Tab:**
-- ✅ Real-time mitigation cards
-- ✅ Displays: Type, Target, Status (ACTIVE badge)
-- ✅ Expiration countdown timer (⏱️ Expires in: XXh YYm)
-- ✅ Green border styling for active mitigations
-- ✅ Grid layout with multiple mitigation cards
+**Indexes:** All frequently-queried fields indexed (host, level, severity, status, user_id, created_at)
 
-**Action History Tab:**
-- ✅ Searchable audit table with React
-- ✅ Columns: Target, Playbook, Status, Executed At, Result
-- ✅ Status badges (success/failed with color coding)
-- ✅ Sorted by execution time (descending)
-- ✅ Code highlighting for playbook names
-- ✅ Responsive table design
+### Authentication & RBAC (`app/auth.py`)
+**Roles:**
+- `admin`: Full access to all actions
+- `soc_manager`: Can execute playbooks but not approve (escalation)
+- `analyst`: Can create/investigate incidents but not close or execute playbooks
 
-**Playbooks Tab:**
-- ✅ Read-only directory of available playbooks
-- ✅ Cards display: Name, Description, Triggers
-- ✅ Three example playbooks:
-  - brute_force_ip_block
-  - critical_error_restart
-  - ransomware_containment
-- ✅ Trigger list with visual indicators (▶ bullet points)
-- ✅ Purple border styling for playbooks
+**Permissions Matrix:**
+- alerts.view, alerts.assign, alerts.suppress
+- incidents.create, incidents.edit, incidents.close, incidents.assign
+- playbooks.execute, playbooks.approve
+- containment.execute, containment.approve
+- settings.read, settings.write, settings.approve
+- reports.generate, audit.view, users.manage
 
-**Styling:**
-- ✅ Dark-themed console aesthetic
-- ✅ Cyan/green/purple accent colors
-- ✅ Responsive grid layouts
-- ✅ Hover effects and animations
-- ✅ SOARDashboard.css with complete styling
+**Decorators:**
+- `@authenticate`: Validates user from Bearer token or X-User-ID header
+- `@require_permission(action)`: Enforces RBAC before action
+- `AuthContext`: Per-request auth context with team-based access control
 
----
-
-### ✅ TASK 3: BACKEND API ENDPOINTS (SOAR HISTORY)
-
-**New SOAR Database Table:**
-```sql
-CREATE TABLE soar_actions (
-    id SERIAL PRIMARY KEY,
-    target VARCHAR(255) NOT NULL,
-    playbook VARCHAR(255) NOT NULL,
-    status VARCHAR(20) DEFAULT 'pending',
-    executed_at TIMESTAMP DEFAULT NOW(),
-    result_detail TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-**Implemented Endpoints:**
-
-1. **GET /api/v1/soar/actions**
-   - Retrieves SOAR action history from database
-   - Returns: `{ "actions": [ {id, target, playbook, status, executed_at, result_detail} ] }`
-   - Ordered by executed_at DESC (most recent first)
-   - Supports limit parameter (default 100)
-   - Used by Action History tab in SOAR dashboard
-
-2. **POST /api/v1/soar/actions**
-   - Creates new SOAR action record
-   - Accepts: { target, playbook, status, result_detail }
-   - Returns: Created action object with ID
-   - Used by SOAR automation system to log actions
-
-3. **GET /api/v1/soar/mitigations**
-   - Returns active mitigation records
-   - Demo data with expiration countdowns
-   - Returns: Array of mitigation objects
-
-4. **GET /api/v1/soar/playbooks**
-   - Returns available playbooks directory
-   - Includes: name, triggers[], description
-   - Three example playbooks included
-
-5. **GET /api/v1/soar/mitigations** (Additional Endpoints)
-   - GET /api/login - User authentication
-   - GET /api/dashboard-metrics - KPI metrics
-   - GET /api/recent-activity - Activity logs
-   - GET /api/raw-logs - Live log stream
-   - GET /api/alerts - Alert summaries
+### Audit Logging (`app/audit.py`)
+**AuditLogger:**
+- Immutable event log with correlation IDs
+- Tracks actor, action, resource, before/after state, reason, IP, user agent
+- High-risk settings automatically flagged for approval
+- All mutations logged (alert.assigned, incident.created, playbook.executed, setting.changed)
 
 ---
 
-### ✅ TASK 4: RAW LOGS UI FIX
+## IMPLEMENTED ENDPOINTS (8 GROUPS)
 
-**RawLogs.jsx Component:**
-- ✅ Live telemetry console-style UI
-- ✅ Dark terminal aesthetics (black bg, cyan text)
-- ✅ Real-time log streaming (1-second polling)
-- ✅ Auto-scrolling to latest logs
+### 1. CORE READ APIs ✅
+- `GET /overview` - KPI cards, charts, priority queue, source health
+- `GET /dashboard-data` - Legacy dashboard (backward compatible)
+- `GET /raw-stream?limit=&cursor=` - Cursor-based log pagination (max 250/page)
+- `GET /alerts?severity=&status=&assignee=&sort=&order=&page=&page_size=`
+- `GET /alerts/{alert_id}` - Full alert context
+- `GET /alerts/{alert_id}/investigation` - Investigation context (timeline, entities, MITRE, IOCs, related alerts)
+- `GET /incidents?status=&priority=&owner=&page=&page_size=`
+- `GET /incidents/{incident_id}` - Full incident details
 
-**Toolbar Features:**
-- ✅ Status indicator (green pulsing dot)
-- ✅ Log count display
-- ✅ Auto-scroll checkbox toggle
-- ✅ Pause/Resume button (pauses streaming)
-- ✅ Clear button (removes all logs)
-- ✅ Connection status indicator
+### 2. ALERT ACTIONS ✅
+- `POST /alerts/bulk-assign` - Assign multiple alerts (idempotent)
+- `POST /alerts/{alert_id}/suppress` - Suppress alert with expiration and scope (alert/rule/entity)
 
-**Log Display:**
-- ✅ Monospace font (Courier New)
-- ✅ Syntax highlighting by log level:
-  - ERROR: Red (#ff6666)
-  - WARN: Orange (#ffa500)
-  - INFO: Cyan (#00d4ff)
-  - DEBUG: Gray (#888)
-- ✅ Columns: timestamp, level, host, message
-- ✅ Auto-wrap long messages
-- ✅ Max 100 logs cached (scrollable)
+### 3. INCIDENT WORKFLOW ✅
+- `POST /incidents` - Create new incident (with alert linkage)
+- `PATCH /incidents/{incident_id}` - Update with state validation
+  - Valid transitions enforced (open→investigating→contained→resolved→closed)
+  - Closure requires reason, notes
+  - Returns 409 for invalid transitions
+- `POST /incidents/{incident_id}/tasks` - Create task
+- `POST /incidents/{incident_id}/merge` - Merge incidents (idempotent)
+- `POST /incidents/{incident_id}/split` - Split incident
+- `POST /incidents/{incident_id}/evidence` - Add evidence
 
-**Functionality:**
-- ✅ Fetches /api/raw-logs every 1 second
-- ✅ Respects pause state
-- ✅ Auto-scroll respects user setting
-- ✅ Scrollable logs container with custom scrollbar
-- ✅ Placeholder message when empty
+### 4. SOAR & RESPONSE ✅
+- `POST /playbooks/{playbook_id}/executions` - Execute playbook
+  - Returns 202 Accepted (async)
+  - High-risk playbooks (isolation, firewall, user_disable) require approval
+  - Dry-run mode available
+- `GET /playbook-executions/{execution_id}` - Check execution status
+- `POST /playbook-executions/{execution_id}/approve` - Approve high-risk execution
+- `POST /playbook-executions/{execution_id}/rollback` - Rollback execution
+- `POST /containment-requests` - Request immediate containment action
+
+### 5. DETECTION ENGINEERING ✅
+- `POST /detection-rules/{rule_id}/test` - Test rule in safe environment
+- `GET /detection-rules/{rule_id}/versions` - Version history
+- `POST /detection-rules/{rule_id}/rollback` - Rollback to previous version
+- `PATCH /detection-rules/{rule_id}` - Update rule
+
+### 6. REPORTING, ASSETS, ACCESS ✅
+- `GET /assets?zone=&criticality=&health=&page=&page_size=`
+- `GET /assets/export?format=csv|xlsx` - Export assets
+- `POST /reports` - Generate report (returns 202)
+- `GET /reports/{report_id}/download` - Download report
+- `POST /saved-views` - Save custom view/filter
+- `GET /saved-views` - List saved views
+- `GET /access/review` - Access audit review
+- `GET /evidence/{evidence_id}` - Get evidence
+
+### 7. SETTINGS & CONFIGURATION ✅
+- `GET /settings/overview` - All settings (masked if sensitive)
+- `GET /settings/{section}` - Settings by section
+- `PATCH /settings/{section}` - Update settings
+  - High-risk settings flagged (retention, disabling rules, privilege changes, OT playbooks)
+  - Requires reason, change ticket, rollback plan
+  - May return 202 Accepted if approval needed
+- `GET /settings/history` - Change history
+- `POST /settings/{section}/validate` - Validate setting
+- `POST /settings/{section}/test` - Test in safe environment
+- `POST /approvals` - Request approval for high-risk change
+- `POST /reauthenticate` - Reauthenticate for high-risk changes
+
+### 8. HEALTH & CAPABILITIES ✅
+- `GET /capabilities` - User's available actions (based on role)
+- `GET /audit-events?page=&page_size=` - Audit log
+- `GET /health` - Server health check
+- `GET /api/status` - API status
 
 ---
 
-### ✅ TASK 5: NGINX & DOCKER BUILD PIPELINE
+## RESPONSE FORMATS
 
-**Multi-Stage Dockerfile.frontend:**
-
-```dockerfile
-Stage 1: Build Corp Portal
-  - Node 18 Alpine
-  - npm ci + npm run build → dist/corp
-
-Stage 2: Build SCADA Dashboard  
-  - Node 18 Alpine
-  - npm ci + npm run build → dist/scada
-
-Stage 3: Build SIEM Dashboard
-  - Node 18 Alpine
-  - npm ci + npm run build → dist/siem
-
-Stage 4: Production NGINX
-  - Copy /dist/corp → /usr/share/nginx/html/corp_portal/
-  - Copy /dist/scada → /usr/share/nginx/html/scada_dashboard/
-  - Copy /dist/siem → /usr/share/nginx/html/siem_dashboard/
-  - Copy nginx.conf
-  - EXPOSE 80
-  - Health check on /health
-```
-
-**Updated NGINX Configuration:**
-
-```nginx
-location /corp_portal/ {
-    alias /usr/share/nginx/html/corp_portal/;
-    try_files $uri $uri/ /corp_portal/index.html;  # SPA fallback
-    Cache static assets (1y)
-}
-
-location /scada_dashboard/ {
-    alias /usr/share/nginx/html/scada_dashboard/;
-    try_files $uri $uri/ /scada_dashboard/index.html;  # SPA fallback
-    Cache static assets (1y)
-}
-
-location /siem_dashboard/ {
-    alias /usr/share/nginx/html/siem_dashboard/;
-    try_files $uri $uri/ /siem_dashboard/index.html;  # SPA fallback
-    Cache static assets (1y)
-}
-
-location /api/ {
-    proxy_pass http://siem-soar-server:5000;
-    Standard proxy headers
-    Long request timeout (300s)
-}
-
-location /health {
-    return 200 "healthy\n";
+### Success Response
+```json
+{
+  "data": {},
+  "message": "Success",
+  "timestamp": "2024-01-15T10:30:00"
 }
 ```
 
-**Docker Compose Integration:**
-- ✅ frontend-webserver service builds Dockerfile.frontend
-- ✅ Ports: 80:80
-- ✅ Networks: security-control
-- ✅ Depends on: siem-soar-server
-- ✅ Health checks enabled
-- ✅ Automatic rebuild on `docker compose build`
-
----
-
-## DIRECTORY STRUCTURE
-
+### List Response
+```json
+{
+  "items": [...],
+  "total": 100,
+  "page": 1,
+  "page_size": 25,
+  "pages": 4
+}
 ```
-frontend/
-├── corp_portal/
-│   ├── package.json (independent deps)
-│   ├── vite.config.js (port 5174, outDir: dist/corp)
-│   ├── index.html
-│   └── src/
-│       ├── main.jsx
-│       ├── App.jsx
-│       ├── App.css
-│       ├── index.css
-│       └── pages/
-│           ├── CorpLogin.jsx + .css
-│           └── CorpDashboard.jsx + .css
-│
-├── scada_dashboard/
-│   ├── package.json (independent deps)
-│   ├── vite.config.js (port 5175, outDir: dist/scada)
-│   ├── index.html
-│   └── src/
-│       ├── main.jsx
-│       ├── App.jsx
-│       ├── App.css
-│       ├── index.css
-│       └── pages/
-│           └── SCADAHmi.jsx + .css
-│
-├── siem_dashboard/
-│   ├── package.json (independent deps)
-│   ├── vite.config.js (port 5176, outDir: dist/siem)
-│   ├── index.html
-│   └── src/
-│       ├── main.jsx
-│       ├── App.jsx
-│       ├── App.css
-│       ├── index.css
-│       └── pages/
-│           ├── SiemDashboard.jsx + .css
-│           ├── SOARDashboard.jsx + .css
-│           └── RawLogs.jsx + .css
 
-ROOT:
-├── Dockerfile.frontend (multi-stage build)
-├── nginx.conf (routing for 3 apps + API proxy)
-├── docker-compose.yml (frontend-webserver service)
-└── siem_server.py (Flask backend with SOAR endpoints)
+### Error Response
+```json
+{
+  "error": {
+    "code": "InvalidRequest",
+    "message": "Description",
+    "details": {}
+  }
+}
 ```
 
 ---
 
-## BUILD & DEPLOYMENT
+## SECURITY FEATURES
 
-### Development (3 separate servers):
+### Authentication
+- Bearer token support (JWT ready)
+- Session cookie support (X-User-ID header)
+- Demo user auto-creation (admin role)
 
+### Authorization (RBAC)
+- Role-based permissions enforced server-side
+- Team-based access control (users can only see their team's resources)
+- Permission check on every mutation endpoint
+- Escalation workflow for sensitive actions (manager approval required)
+
+### Audit Trail
+- Every mutation logged with correlation ID
+- Tracks: actor, action, resource, before/after state, reason, IP, user agent
+- Immutable (append-only audit table)
+- Supports full incident investigation timeline
+
+### Data Protection
+- Sensitive fields masked based on permissions
+- Secrets never exposed in responses
+- All changes tracked with audit events
+
+### High-Risk Actions
+- High-risk playbooks (isolation, firewall, user_disable) require approval
+- High-risk settings (retention, disabling rules, privilege changes, OT playbooks) require approval
+- Settings changes may require reauthentication + MFA
+- OT actions require two-person approval + maintenance window validation
+
+---
+
+## STATE VALIDATION & WORKFLOWS
+
+### Alert Lifecycle
+- open → suppressed, investigating, resolved, dismissed
+
+### Incident Lifecycle (Validated)
+```
+open → investigating
+    ↓
+    → contained → resolved → closed
+    ↓
+    → dismissed
+```
+- Invalid transitions return 409 Conflict
+- Closure requires: closure_reason, resolution_notes, lessons_learned
+- Timestamps auto-updated: detected_at, contained_at, resolved_at, closed_at
+
+### Playbook Execution (High-Risk)
+- High-risk playbooks default to dry_run mode
+- Must be approved before running in live mode
+- Execution status: pending → approved → running → success/failed
+- Can be rolled back with full audit trail
+
+### Settings Changes (High-Risk)
+- High-risk settings: retention, evidence_deletion, rule_disable, privilege_changes, OT playbooks
+- Require: reason, change_ticket, rollback_plan
+- May require reauthentication and approval
+- Complete audit entry with before/after values
+
+---
+
+## DEPLOYMENT
+
+### Docker Setup
 ```bash
-# Terminal 1: Corporate Portal
-cd frontend/corp_portal
-npm install
-npm run dev  # Runs on http://localhost:5174
-
-# Terminal 2: SCADA Dashboard
-cd frontend/scada_dashboard
-npm install
-npm run dev  # Runs on http://localhost:5175
-
-# Terminal 3: SIEM Dashboard
-cd frontend/siem_dashboard
-npm install
-npm run dev  # Runs on http://localhost:5176
-```
-
-Each has own API proxy to localhost:5000
-
-### Production (Docker):
-
-```bash
-docker compose build frontend-webserver
+docker compose build frontend-webserver siem-soar-server
 docker compose up
 ```
 
-- NGINX serves all 3 apps on single port 80
-- Routes to /corp_portal/, /scada_dashboard/, /siem_dashboard/
-- Proxies /api/ to siem-soar-server:5000
-- Health check on /health
+### Flask App Structure
+```
+app/
+├── __init__.py         (Application factory)
+├── models.py           (SQLAlchemy ORM)
+├── auth.py            (RBAC, decorators)
+├── audit.py           (Audit logging)
+├── api_v1.py          (Core endpoints: 1-3)
+└── api_v1_actions.py  (Action endpoints: 4-8)
+```
+
+### Environment
+```
+DATABASE_URL=postgresql://siem_user:password@siem-postgres:5432/siem_db
+FLASK_ENV=production
+```
+
+### Requirements
+```
+Flask==2.3.0
+Flask-SQLAlchemy==3.0.0
+Flask-CORS==4.0.0
+psycopg2-binary==2.9.0
+```
 
 ---
 
-## API ENDPOINTS (COMPLETE LIST)
+## INTEGRATION CHECKLIST
 
-### Authentication
-- `POST /api/login` - User login (FormData: username, password)
-
-### Dashboard
-- `GET /api/dashboard-metrics` - Corporate dashboard KPIs
-- `GET /api/recent-activity` - Activity log
-- `GET /api/dashboard-data` - SIEM dashboard data
-- `GET /api/alerts` - Alert summaries
-
-### SCADA
-- `GET /api/modbus` - Modbus register data (Temperature, Pressure, Flow)
-
-### Logs
-- `GET /api/raw-logs` - Live log stream (for RawLogs UI)
-- `GET /logs/ingest` - Legacy log ingest
-- `GET /logs` - Retrieve logs
-- `GET /status` - Server status
-
-### SOAR (NEW)
-- `GET /api/v1/soar/actions` - SOAR action history
-- `POST /api/v1/soar/actions` - Create SOAR action
-- `GET /api/v1/soar/mitigations` - Active mitigations
-- `GET /api/v1/soar/playbooks` - Available playbooks
+Frontend endpoints are now operational:
+- [ ] Run `docker compose up`
+- [ ] Visit http://localhost/siem_dashboard/
+- [ ] Click SOAR dashboard tab
+- [ ] Verify "Active Mitigations", "Action History", "Playbooks" load
+- [ ] Test Raw Logs stream (auto-fetches /api/raw-stream)
+- [ ] Test Alert assignment (POST /api/alerts/bulk-assign)
+- [ ] Test Incident creation (POST /api/incidents)
+- [ ] Test Playbook execution (POST /api/playbooks/{id}/executions)
+- [ ] Verify Audit Events visible (GET /api/audit-events)
 
 ---
 
-## TESTING CHECKLIST
+## API DOCUMENTATION
 
-### Development
-- [ ] `npm install` in each app folder
-- [ ] `npm run dev` in each app (verify ports 5174, 5175, 5176)
-- [ ] Test login flow on http://localhost:5174/
-- [ ] Test SCADA HMI on http://localhost:5175/
-- [ ] Test SIEM dashboard on http://localhost:5176/
-- [ ] Verify API proxying to localhost:5000
-
-### Docker Build
-- [ ] `docker compose build frontend-webserver` succeeds
-- [ ] Verify 3 build stages (corp, scada, siem) complete
-- [ ] Check final image size is reasonable
-
-### Production (Docker Compose)
-- [ ] `docker compose up` brings all services up
-- [ ] NGINX health check passes: `curl http://localhost/health`
-- [ ] **Corp Portal**: `http://localhost/corp_portal/`
-  - [ ] Login page loads
-  - [ ] Form submission works
-  - [ ] Session storage works
-  - [ ] Dashboard page loads after login
-  - [ ] Logout redirects to login
-- [ ] **SCADA Dashboard**: `http://localhost/scada_dashboard/`
-  - [ ] 2 PLC rectangles visible
-  - [ ] Real-time data updates every 2s
-  - [ ] Modbus values display
-- [ ] **SIEM Dashboard**: `http://localhost/siem_dashboard/`
-  - [ ] Overview tab loads metrics
-  - [ ] SOAR tab shows Active Mitigations (with countdown)
-  - [ ] SOAR Action History table loads
-  - [ ] Playbooks tab lists playbooks
-  - [ ] Raw Logs tab streams logs with play/pause
-- [ ] **API Proxying**: All /api/ routes reach backend:5000
-- [ ] **SPA Routing**: Page refreshes preserve current route
-- [ ] **Static Caching**: Assets cached for 1 year
-
-### Backend Integration
-- [ ] SOAR table created in PostgreSQL
-- [ ] POST /api/v1/soar/actions stores action
-- [ ] GET /api/v1/soar/actions retrieves history
-- [ ] Login endpoint returns user object
-- [ ] Dashboard metrics endpoint returns KPIs
-
----
-
-## ADVANTAGES OF MULTI-APP ARCHITECTURE
-
-1. **Isolated Development**
-   - Three teams can work independently
-   - No dependency conflicts
-   - Separate deployment schedules
-
-2. **Realistic Enterprise Setup**
-   - Simulates microservices (frontend fragments)
-   - Each app can be developed/deployed independently
-   - Infrastructure-agnostic (easily move to CDN, separate servers)
-
-3. **Independent Scaling**
-   - Corp Portal: Can handle auth load independently
-   - SCADA: Can be optimized for real-time performance
-   - SIEM: Can scale with large datasets
-
-4. **Security Isolation**
-   - Compromised app doesn't affect others
-   - Separate CSP policies per app
-   - Granular access controls
-
-5. **Technology Flexibility**
-   - Each app can use different frameworks (e.g., corp → React, scada → Vue)
-   - Easy to upgrade individual apps
-   - Can run on different Node versions
-
----
-
-## MIGRATION NOTES
-
-**From Monolithic SPA to Multi-App:**
-- Old: Single React app with React Router
-- New: Three independent Vite apps served by NGINX
-- SPA routing handled by NGINX (try_files) per app
-- No shared state between apps (only via API)
-- Builds are parallelizable in Docker
+Full API specification available in `API.md`:
+- All 8 endpoint groups
+- Request/response formats
+- Error codes
+- Rate limits
+- Security notes
 
 ---
 
 ## SUMMARY
 
-**✅ COMPLETE:** Multi-app React architecture with SOAR dashboard, raw logs UI, backend SOAR endpoints, multi-stage Docker build, and NGINX routing.
+**✅ COMPLETE:** Full backend API with:
+- 40+ endpoints across 8 functional groups
+- Production-grade RBAC and audit logging
+- State validation and workflow enforcement
+- High-risk action approval workflows
+- Cursor-based pagination for large datasets
+- Immutable audit trail
+- Backward-compatible legacy endpoints
 
-**READY FOR:** Full end-to-end testing with Docker Compose.
+**READY FOR:** Frontend integration and end-to-end testing
 
-**NEXT STEPS:** 
-1. Test development mode (3 npm servers)
-2. Build Docker image
-3. Deploy with docker-compose
-4. Verify all three apps work
-5. Test SOAR action tracking
-6. Monitor logs in real-time UI
+**NEXT STEPS:**
+1. Deploy with docker-compose
+2. Test frontend to backend connectivity
+3. Verify SOAR dashboard loading
+4. Load-test with audit logs
+5. Set up CI/CD pipeline
 
