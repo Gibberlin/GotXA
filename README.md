@@ -5,7 +5,7 @@ A self-contained platform that simulates a critical-infrastructure security oper
 <!-- IMAGE: Project cover / hero banner — replace div below with ![Cover](./images/cover.png) -->
 <p align="center">
   <div style="width:100%; height:280px; border:2px dashed #aaa; display:flex; align-items:center; justify-content:center; color:#888; font-family:sans-serif;">
-    [ Cover Image — add ./images/cover.png ]
+     <img src="./images/poster.png">
   </div>
 </p>
 
