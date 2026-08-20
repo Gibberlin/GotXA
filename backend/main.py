@@ -18,7 +18,7 @@ from flask_cors import CORS
 
 from app.models import db
 from app.auth import error_response
-from app import api_v1, api_v1_actions, api_v1_extended, api_v1_consolidated, api_v1_reports
+from app import api_v1, api_v1_actions, api_v1_extended, api_v1_consolidated, api_v1_reports, api_v1_db
 from app.celery_app import make_celery
 
 # Configure logging
@@ -59,6 +59,7 @@ def create_app():
     app.register_blueprint(api_v1_extended.api)
     app.register_blueprint(api_v1_consolidated.api)
     app.register_blueprint(api_v1_reports.api)
+    app.register_blueprint(api_v1_db.api)
     
     # Error handlers
     @app.errorhandler(404)
