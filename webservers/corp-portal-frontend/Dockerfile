@@ -1,28 +1,15 @@
-FROM node:18-alpine AS builder
-
-WORKDIR /app
-
-# Copy corp portal app
-COPY frontend/corp_portal ./
-
-# Build
-RUN npm install && npm run build
-
-# Production image
 FROM nginx:alpine
-
-# Create frontend directory for React apps
-RUN mkdir -p /app/frontend && chmod 755 /app/frontend
 
 # Copy nginx config
 COPY webservers/corp-portal-frontend/nginx.conf /etc/nginx/nginx.conf
 
-# Copy built app
-COPY --from=builder /app/dist /usr/share/nginx/html
+# Serve the prebuilt portal. Build the frontend outside Docker and place the
+# resulting assets in frontend/corp_portal/dist/ before building this image.
+COPY frontend/corp_portal/dist/ /usr/share/nginx/html/
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost:80/ || exit 1
+    CMD wget --quiet --tries=1 --spider http://127.0.0.1:80/ || exit 1
 
 EXPOSE 80
 
