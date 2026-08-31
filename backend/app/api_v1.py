@@ -102,62 +102,36 @@ def get_dashboard_data():
 @api.route('/raw-stream', methods=['GET'])
 @authenticate
 def get_raw_stream():
-    """Stream raw logs and security events with cursor-based pagination."""
+    """Stream raw logs and security events directly as a JSON list for the live dashboard."""
     try:
-        limit = min(int(request.args.get('limit', 50)), 250)
-        cursor = request.args.get('cursor')
+        limit = min(int(request.args.get('limit', 100)), 500)
         
-        # First attempt to query SecurityEvent for real logs
-        sec_events_count = db.session.query(SecurityEvent.id).count()
-        if sec_events_count > 0:
-            query = db.session.query(SecurityEvent).order_by(desc(SecurityEvent.received_at))
-            if cursor:
-                cursor_event = db.session.query(SecurityEvent).filter_by(id=cursor).first()
-                if cursor_event:
-                    query = query.filter(SecurityEvent.received_at < cursor_event.received_at)
+        # Query latest real SecurityEvent rows from PostgreSQL
+        events = db.session.query(SecurityEvent).order_by(desc(SecurityEvent.occurred_at), desc(SecurityEvent.received_at)).limit(limit).all()
+        
+        if events:
+            # Return in chronological order so newest appears in stream correctly
+            formatted = [{
+                'id': e.id,
+                'timestamp': e.occurred_at.strftime('%I:%M:%S %p') if e.occurred_at else (e.received_at.strftime('%I:%M:%S %p') if e.received_at else datetime.utcnow().strftime('%I:%M:%S %p')),
+                'level': e.severity.upper() if e.severity else 'INFO',
+                'host': e.source or 'system',
+                'message': e.message,
+                'raw_event': e.raw_event
+            } for e in reversed(events)]
+            return jsonify(formatted), 200
             
-            items = query.limit(limit + 1).all()
-            next_cursor = None
-            if len(items) > limit:
-                next_cursor = items[-2].id
-                items = items[:-1]
-                
-            return success_response({
-                'items': [{
-                    'id': e.id,
-                    'timestamp': e.occurred_at.isoformat() if e.occurred_at else (e.received_at.isoformat() if e.received_at else None),
-                    'level': e.severity.upper(),
-                    'host': e.source,
-                    'message': e.message,
-                    'raw_event': e.raw_event
-                } for e in items],
-                'next_cursor': next_cursor
-            })
-        
         # Fallback to Alert table if SecurityEvent is empty
-        query = db.session.query(Alert).order_by(desc(Alert.created_at))
-        if cursor:
-            cursor_alert = db.session.query(Alert).filter_by(id=cursor).first()
-            if cursor_alert:
-                query = query.filter(Alert.created_at < cursor_alert.created_at)
-        
-        items = query.limit(limit + 1).all()
-        next_cursor = None
-        if len(items) > limit:
-            next_cursor = items[-2].id
-            items = items[:-1]
-        
-        return success_response({
-            'items': [{
-                'id': a.id,
-                'timestamp': a.timestamp.isoformat() if a.timestamp else None,
-                'level': a.severity.upper(),
-                'host': a.source,
-                'message': a.title,
-                'raw_event': a.raw_event
-            } for a in items],
-            'next_cursor': next_cursor
-        })
+        alerts = db.session.query(Alert).order_by(desc(Alert.timestamp)).limit(limit).all()
+        formatted_alerts = [{
+            'id': a.id,
+            'timestamp': a.timestamp.strftime('%I:%M:%S %p') if a.timestamp else datetime.utcnow().strftime('%I:%M:%S %p'),
+            'level': a.severity.upper() if a.severity else 'INFO',
+            'host': a.source or 'system',
+            'message': a.title,
+            'raw_event': a.raw_event
+        } for a in reversed(alerts)]
+        return jsonify(formatted_alerts), 200
     except Exception as e:
         return error_response('InternalError', str(e), 500)
 

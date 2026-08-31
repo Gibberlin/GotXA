@@ -64,6 +64,14 @@ def create_app():
     app.register_blueprint(api_corporate.api)
     app.register_blueprint(api_ingestion.api)
     
+    # Start Real System Telemetry Daemon
+    try:
+        from app.telemetry import SystemTelemetryDaemon
+        telemetry_daemon = SystemTelemetryDaemon(app, interval_sec=5)
+        telemetry_daemon.start()
+    except Exception as e:
+        logger.warning(f"Could not start SystemTelemetryDaemon: {e}")
+    
     # Error handlers
     @app.errorhandler(404)
     def not_found(e):
