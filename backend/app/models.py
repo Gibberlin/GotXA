@@ -365,3 +365,23 @@ class SystemMetric(db.Model):
     metric_data = db.Column(db.JSON)
     
     recorded_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+class UserSession(db.Model):
+    """Real user authentication session model with tracking and audit recording."""
+    __tablename__ = 'user_sessions'
+    
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    token = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    user_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False, index=True)
+    
+    ip_address = db.Column(db.String(50))
+    user_agent = db.Column(db.String(500))
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    last_accessed_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True, index=True)
+    revoked_at = db.Column(db.DateTime, nullable=True)
+    
+    user = db.relationship('User', foreign_keys=[user_id])
+

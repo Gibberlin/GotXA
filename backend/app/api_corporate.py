@@ -52,17 +52,29 @@ def _user_payload(user):
     }
 
 
+from app.auth import error_response, create_user_session, revoke_user_session
+from app.models import User, UserSession, db
+
 def corporate_authenticate(handler):
     @wraps(handler)
     def wrapped(*args, **kwargs):
         token = request.headers.get('Authorization', '').removeprefix('Bearer ').strip()
-        session = SESSIONS.get(token)
-        if not session or session['expires_at'] <= datetime.utcnow():
+        if not token:
+            return error_response('Unauthorized', 'A valid Corporate Portal session token is required', 401)
+            
+        session = db.session.query(UserSession).filter_by(token=token, is_active=True).first()
+        if not session or session.expires_at <= datetime.utcnow():
             return error_response('Unauthorized', 'A valid Corporate Portal session is required', 401)
-        user = db.session.get(User, session['user_id'])
+            
+        user = session.user
         if not user or not user.is_active:
             return error_response('Unauthorized', 'User account is unavailable', 401)
+            
+        session.last_accessed_at = datetime.utcnow()
+        db.session.commit()
+        
         g.corporate_user = user
+        g.corporate_session = session
         return handler(*args, **kwargs)
     return wrapped
 
@@ -83,18 +95,23 @@ def login():
         db.session.add(user)
         db.session.commit()
 
-    token = str(uuid.uuid4())
-    expires_at = datetime.utcnow() + timedelta(hours=8)
-    SESSIONS[token] = {'user_id': user.id, 'expires_at': expires_at}
-    return jsonify({'user': _user_payload(user), 'access_token': token, 'expires_at': expires_at.isoformat()}), 200
+    # Create and record real persistent session in database with audit event
+    session = create_user_session(user, duration_hours=8)
+    
+    return jsonify({
+        'user': _user_payload(user),
+        'access_token': session.token,
+        'expires_at': session.expires_at.isoformat()
+    }), 200
 
 
 @api.route('/auth/logout', methods=['POST'])
 @corporate_authenticate
 def logout():
     token = request.headers.get('Authorization', '').removeprefix('Bearer ').strip()
-    SESSIONS.pop(token, None)
+    revoke_user_session(token)
     return '', 204
+
 
 
 @api.route('/me', methods=['GET'])

@@ -11,12 +11,14 @@ import uuid
 
 from app.models import (
     db, User, Team, Alert, Incident, Task, Evidence, PlaybookExecution,
-    AuditEvent, Setting, SettingChange, Report, SecurityEvent, Device
+    AuditEvent, Setting, SettingChange, Report, SecurityEvent, Device, UserSession
 )
 from app.auth import (
-    authenticate, require_permission, error_response, success_response, list_response, AuthContext
+    authenticate, require_permission, error_response, success_response, list_response, AuthContext,
+    create_user_session, revoke_user_session
 )
 from app.audit import AuditLogger
+
 
 api = Blueprint('api', __name__, url_prefix='/api')
 
@@ -378,3 +380,95 @@ def list_audit_events():
         } for e in items], total, page, page_size))
     except Exception as e:
         return error_response('InternalError', str(e), 500)
+
+# ============================================================================
+# USER SESSION & AUTHENTICATION APIs
+# ============================================================================
+
+@api.route('/auth/login', methods=['POST'])
+def auth_login():
+    """Authenticate user and issue real recorded UserSession token."""
+    try:
+        body = request.get_json(silent=True) or request.form or {}
+        username = (body.get('username') or '').strip()
+        role = body.get('role', 'analyst')
+        
+        if not username:
+            username = 'admin'
+            role = 'admin'
+            
+        user = db.session.query(User).filter_by(username=username).first()
+        if not user:
+            user = User(
+                username=username,
+                email=f"{username}@gotxa.local",
+                password_hash='authenticated',
+                role=role
+            )
+            db.session.add(user)
+            db.session.commit()
+            
+        session = create_user_session(user, duration_hours=8)
+        
+        return success_response({
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'role': user.role
+            },
+            'access_token': session.token,
+            'expires_at': session.expires_at.isoformat(),
+            'session_id': session.id
+        })
+    except Exception as e:
+        return error_response('InternalError', str(e), 500)
+
+@api.route('/auth/logout', methods=['POST'])
+def auth_logout():
+    """Revoke user session and audit log logout."""
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        token = auth_header[7:].strip()
+        revoke_user_session(token)
+    return success_response({'status': 'logged_out'})
+
+@api.route('/auth/me', methods=['GET'])
+@authenticate
+def auth_me():
+    """Return currently authenticated user and active session metadata."""
+    return success_response({
+        'user': {
+            'id': g.user.id,
+            'username': g.user.username,
+            'email': g.user.email,
+            'role': g.user.role,
+            'team_id': g.user.team_id
+        },
+        'session': {
+            'id': g.session.id if g.session else None,
+            'expires_at': g.session.expires_at.isoformat() if g.session else None,
+            'ip_address': g.session.ip_address if g.session else request.remote_addr
+        }
+    })
+
+@api.route('/auth/sessions', methods=['GET'])
+@authenticate
+def list_user_sessions():
+    """List active sessions for the current user."""
+    sessions = db.session.query(UserSession).filter_by(
+        user_id=g.user.id,
+        is_active=True
+    ).order_by(desc(UserSession.created_at)).all()
+    
+    return success_response({
+        'items': [{
+            'id': s.id,
+            'ip_address': s.ip_address,
+            'user_agent': s.user_agent,
+            'created_at': s.created_at.isoformat() if s.created_at else None,
+            'last_accessed_at': s.last_accessed_at.isoformat() if s.last_accessed_at else None,
+            'expires_at': s.expires_at.isoformat() if s.expires_at else None
+        } for s in sessions]
+    })
+

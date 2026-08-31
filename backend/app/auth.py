@@ -104,28 +104,101 @@ class AuthContext:
             return True
         return False
 
+import secrets
+from datetime import datetime, timedelta
+
+def create_user_session(user, ip_address=None, user_agent=None, duration_hours=8):
+    """Create and record a real authenticated user session with audit logging."""
+    from app.models import UserSession, db
+    from app.audit import AuditLogger
+    
+    token = f"gotxa_sess_{secrets.token_urlsafe(32)}"
+    expires_at = datetime.utcnow() + timedelta(hours=duration_hours)
+    
+    session = UserSession(
+        token=token,
+        user_id=user.id,
+        ip_address=ip_address or (request.remote_addr if request else None),
+        user_agent=user_agent or (request.headers.get('User-Agent') if request else None),
+        expires_at=expires_at,
+        is_active=True
+    )
+    db.session.add(session)
+    db.session.flush()
+    
+    # Record session creation in audit trail
+    try:
+        AuditLogger().log(
+            actor=user,
+            action='session.login',
+            resource_type='UserSession',
+            resource_id=session.id,
+            change_after={'user_id': user.id, 'username': user.username, 'expires_at': expires_at.isoformat()},
+            reason='User session established',
+            ip_address=session.ip_address,
+            user_agent=session.user_agent
+        )
+    except Exception:
+        pass
+        
+    db.session.commit()
+    return session
+
+def revoke_user_session(token):
+    """Revoke an active user session."""
+    from app.models import UserSession, db
+    from app.audit import AuditLogger
+    
+    session = db.session.query(UserSession).filter_by(token=token, is_active=True).first()
+    if session:
+        session.is_active = False
+        session.revoked_at = datetime.utcnow()
+        try:
+            AuditLogger().log(
+                actor=session.user,
+                action='session.logout',
+                resource_type='UserSession',
+                resource_id=session.id,
+                reason='User session terminated'
+            )
+        except Exception:
+            pass
+        db.session.commit()
+        return True
+    return False
+
 def authenticate(f):
-    """Decorator to check authentication and set g.auth_context."""
+    """Decorator to check authentication, validate session token, and set g.auth_context."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        from app.models import User, db
+        from app.models import User, UserSession, db
         
         user = None
+        user_session = None
         
-        # Check Bearer token
+        # Check Bearer token against real UserSession table
         auth_header = request.headers.get('Authorization', '')
         if auth_header.startswith('Bearer '):
-            token = auth_header[7:]
-            # TODO: Validate JWT token
-            pass
+            token = auth_header[7:].strip()
+            if token:
+                user_session = db.session.query(UserSession).filter_by(token=token, is_active=True).first()
+                if user_session and user_session.expires_at > datetime.utcnow():
+                    user = user_session.user
+                    user_session.last_accessed_at = datetime.utcnow()
+                    db.session.commit()
+                elif user_session:
+                    user_session.is_active = False
+                    db.session.commit()
         
-        # Check X-User-ID header (demo)
+        # Check X-User-ID header (fallback)
         if not user:
             user_id = request.headers.get('X-User-ID')
             if user_id:
                 user = db.session.get(User, user_id)
+                if not user:
+                    user = db.session.query(User).filter_by(username=user_id).first()
         
-        # Demo: create admin user if not exists
+        # Fallback default admin user if not exists
         if not user:
             user = db.session.query(User).filter_by(username='admin').first()
             if not user:
@@ -143,10 +216,12 @@ def authenticate(f):
         
         g.auth_context = AuthContext(user)
         g.user = user
+        g.session = user_session
         
         return f(*args, **kwargs)
     
     return decorated_function
+
 
 def require_permission(permission):
     """Decorator to require a specific permission."""

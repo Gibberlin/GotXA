@@ -39,9 +39,10 @@ class AuditLogger:
             change_before=change_before or {},
             change_after=change_after or {},
             reason=reason,
-            ip_address=ip_address or request.remote_addr if request else None,
-            user_agent=user_agent or request.headers.get('User-Agent') if request else None
+            ip_address=ip_address or (request.remote_addr if request else None),
+            user_agent=user_agent or (request.headers.get('User-Agent') if request else None)
         )
+
         
         db.session.add(event)
         db.session.flush()
