@@ -657,73 +657,34 @@ def create_report():
 
 
 # ============================================================================
-# 8. MOCK PORTAL AUTH & METRICS & SCADA PROXIES
+# 8. PRODUCTION METRICS & SCADA PROXIES
 # ============================================================================
 
 @api.route('/login', methods=['POST'])
 def login():
-    """Authenticate user (demo)."""
-    try:
-        username = request.form.get('username')
-        password = request.form.get('password')
-        if not username and request.is_json:
-            username = request.json.get('username')
-            password = request.json.get('password')
-        
-        # Check credentials
-        if username == 'admin' and password == 'SecureP@ssw0rd':
-            user = db.session.query(User).filter_by(username='admin').first()
-            if not user:
-                user = User(
-                    username='admin',
-                    email='admin@gotxa.local',
-                    password_hash='SecureP@ssw0rd',
-                    role='admin',
-                    is_active=True
-                )
-                db.session.add(user)
-                db.session.commit()
-            
-            return jsonify({
-                "user": {
-                    "id": user.id,
-                    "username": user.username,
-                    "email": user.email,
-                    "role": user.role
-                }
-            }), 200
-        else:
-            return jsonify({"message": "Invalid credentials"}), 401
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    """Legacy local login is disabled; production must use an identity provider."""
+    return jsonify({"error": "Local demo login is disabled. Configure an OIDC/SAML identity provider."}), 410
 
 
 @api.route('/dashboard-metrics', methods=['GET'])
 def dashboard_metrics():
     """Get dashboard metrics."""
     try:
-        from app.models import LogSource, Alert, AuditEvent
-        active_systems = db.session.query(LogSource).count() or 5
-        total_transactions = db.session.query(AuditEvent).count() or 1234
-        open_issues = db.session.query(Alert).filter(Alert.status == 'open').count() or 3
+        from app.models import LogSource, Alert, AuditEvent, SecurityEvent
+        active_systems = db.session.query(LogSource).count()
+        total_transactions = db.session.query(AuditEvent).count()
+        open_issues = db.session.query(Alert).filter(Alert.status == 'open').count()
         
         return jsonify({
             "active_systems": active_systems,
             "total_transactions": total_transactions,
             "open_issues": open_issues,
-            "security_score": 92,
-            "response_time": 45,
-            "data_volume": 2.3
+            "security_score": None,
+            "response_time": None,
+            "data_volume": db.session.query(SecurityEvent).count()
         }), 200
     except Exception as e:
-        return jsonify({
-            "active_systems": 5,
-            "total_transactions": 1234,
-            "open_issues": 3,
-            "security_score": 92,
-            "response_time": 45,
-            "data_volume": 2.3
-        }), 200
+        return jsonify({"error": "Metrics unavailable"}), 500
 
 
 @api.route('/recent-activity', methods=['GET'])
@@ -740,12 +701,6 @@ def recent_activity():
                 "status": "success"
             })
         
-        if not activities:
-            activities = [
-                { "timestamp": datetime.utcnow().strftime('%H:%M:%S'), "description": "System health check passed", "status": "success" },
-                { "timestamp": (datetime.utcnow() - timedelta(minutes=5)).strftime('%H:%M:%S'), "description": "Database connection verified", "status": "success" },
-                { "timestamp": (datetime.utcnow() - timedelta(minutes=15)).strftime('%H:%M:%S'), "description": "Security policies loaded", "status": "success" }
-            ]
         return jsonify({"activities": activities}), 200
     except Exception as e:
         return jsonify({"activities": []}), 200
@@ -759,11 +714,7 @@ def modbus_proxy():
         response = requests.get('http://ot-scada-gateway:5002/api/modbus', timeout=5)
         return jsonify(response.json()), response.status_code
     except Exception as e:
-        return jsonify({
-            "error": "Cannot connect to SCADA gateway",
-            "refinery_1": {"status": "offline", "temperature": 185.2, "pressure": 51.8},
-            "refinery_2": {"status": "offline", "flow_rate": 52.4, "temperature": 175.8}
-        }), 503
+        return jsonify({"error": "Cannot connect to SCADA gateway"}), 503
 
 
 @api.route('/modbus/refinery-1', methods=['GET'])
@@ -774,7 +725,7 @@ def modbus_refinery1_proxy():
         response = requests.get('http://ot-scada-gateway:5002/api/modbus/refinery-1', timeout=5)
         return jsonify(response.json()), response.status_code
     except Exception as e:
-        return jsonify({"status": "offline", "temperature": 185.2, "pressure": 51.8}), 503
+        return jsonify({"error": "Cannot connect to SCADA gateway"}), 503
 
 
 @api.route('/modbus/refinery-2', methods=['GET'])
@@ -785,4 +736,4 @@ def modbus_refinery2_proxy():
         response = requests.get('http://ot-scada-gateway:5002/api/modbus/refinery-2', timeout=5)
         return jsonify(response.json()), response.status_code
     except Exception as e:
-        return jsonify({"status": "offline", "flow_rate": 52.4, "temperature": 175.8}), 503
+        return jsonify({"error": "Cannot connect to SCADA gateway"}), 503

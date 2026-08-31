@@ -275,6 +275,39 @@ class LogSource(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class Device(db.Model):
+    """Inventory of devices observed in authenticated production telemetry."""
+    __tablename__ = 'devices'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    hostname = db.Column(db.String(255), nullable=False, unique=True, index=True)
+    ip_address = db.Column(db.String(45), index=True)
+    mac_address = db.Column(db.String(17), unique=True, index=True)
+    device_type = db.Column(db.String(100), nullable=False, default='unknown', index=True)
+    manufacturer = db.Column(db.String(255))
+    model = db.Column(db.String(255))
+    os_version = db.Column(db.String(255))
+    serial_number = db.Column(db.String(255), unique=True)
+    trust_state = db.Column(db.String(20), nullable=False, default='untrusted', index=True)
+    first_seen_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    last_seen_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    metadata_json = db.Column(db.JSON)
+
+class SecurityEvent(db.Model):
+    """Immutable, normalized events received from approved collectors."""
+    __tablename__ = 'security_events'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    device_id = db.Column(db.String(36), db.ForeignKey('devices.id'), nullable=True, index=True)
+    source = db.Column(db.String(255), nullable=False, index=True)
+    severity = db.Column(db.String(20), nullable=False, default='info', index=True)
+    message = db.Column(db.Text, nullable=False)
+    occurred_at = db.Column(db.DateTime, nullable=False, index=True)
+    received_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    raw_event = db.Column(db.JSON, nullable=False)
+
+    device = db.relationship('Device')
+
 class ThreatIntelligenceFeed(db.Model):
     """Threat intelligence feed status and metrics."""
     __tablename__ = 'threat_intelligence_feeds'

@@ -6,6 +6,16 @@ from celery import shared_task
 from app.models import db, Report
 from app.pdf_generator import generate_report_pdf
 
+@shared_task(bind=True, name='tasks.process_security_events')
+def process_security_events_task(self, events):
+    """Persist incoming telemetry independently of HTTP collectors."""
+    try:
+        from app.api_ingestion import process_event_batch
+        return process_event_batch(events)
+    except Exception as error:
+        db.session.rollback()
+        raise self.retry(exc=error, countdown=5, max_retries=3)
+
 @shared_task(bind=True, name='tasks.generate_report')
 def generate_report_task(self, report_id):
     """

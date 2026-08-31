@@ -22,7 +22,6 @@ audit = AuditLogger()
 # 2. ALERT ACTIONS
 # ============================================================================
 
-@api.route('/alerts/bulk-assign', methods=['POST'])
 @authenticate
 @require_permission('alerts.assign')
 def bulk_assign_alerts():
@@ -62,7 +61,6 @@ def bulk_assign_alerts():
         db.session.rollback()
         return error_response('InternalError', str(e), 500)
 
-@api.route('/alerts/<alert_id>/suppress', methods=['POST'])
 @authenticate
 @require_permission('alerts.suppress')
 def suppress_alert(alert_id):
@@ -137,7 +135,6 @@ def update_alert_status(alert_id):
 # 3. INCIDENT ACTIONS
 # ============================================================================
 
-@api.route('/incidents', methods=['POST'])
 @authenticate
 @require_permission('incidents.create')
 def create_incident():

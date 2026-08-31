@@ -11,7 +11,7 @@ import uuid
 
 from app.models import (
     db, User, Team, Alert, Incident, Task, Evidence, PlaybookExecution,
-    AuditEvent, Setting, SettingChange, Report
+    AuditEvent, Setting, SettingChange, Report, SecurityEvent, Device
 )
 from app.auth import (
     authenticate, require_permission, error_response, success_response, list_response, AuthContext
@@ -82,7 +82,7 @@ def get_overview():
 def get_dashboard_data():
     """Legacy dashboard endpoint for backward compatibility."""
     try:
-        total_logs = db.session.query(Alert).count()
+        total_logs = db.session.query(SecurityEvent).count() or db.session.query(Alert).count()
         total_alerts = db.session.query(Alert).filter_by(status='open').count()
         
         return success_response({
@@ -92,7 +92,7 @@ def get_dashboard_data():
                 Alert.severity == 'critical',
                 Alert.status == 'open'
             ).count(),
-            'active_hosts': db.session.query(Alert.source).distinct().count()
+            'active_hosts': db.session.query(Device.hostname).distinct().count() or db.session.query(Alert.source).distinct().count()
         })
     except Exception as e:
         return error_response('InternalError', str(e), 500)
@@ -100,20 +100,46 @@ def get_dashboard_data():
 @api.route('/raw-stream', methods=['GET'])
 @authenticate
 def get_raw_stream():
-    """Stream raw logs with cursor-based pagination."""
+    """Stream raw logs and security events with cursor-based pagination."""
     try:
         limit = min(int(request.args.get('limit', 50)), 250)
         cursor = request.args.get('cursor')
         
-        query = db.session.query(Alert).order_by(desc(Alert.created_at))
+        # First attempt to query SecurityEvent for real logs
+        sec_events_count = db.session.query(SecurityEvent.id).count()
+        if sec_events_count > 0:
+            query = db.session.query(SecurityEvent).order_by(desc(SecurityEvent.received_at))
+            if cursor:
+                cursor_event = db.session.query(SecurityEvent).filter_by(id=cursor).first()
+                if cursor_event:
+                    query = query.filter(SecurityEvent.received_at < cursor_event.received_at)
+            
+            items = query.limit(limit + 1).all()
+            next_cursor = None
+            if len(items) > limit:
+                next_cursor = items[-2].id
+                items = items[:-1]
+                
+            return success_response({
+                'items': [{
+                    'id': e.id,
+                    'timestamp': e.occurred_at.isoformat() if e.occurred_at else (e.received_at.isoformat() if e.received_at else None),
+                    'level': e.severity.upper(),
+                    'host': e.source,
+                    'message': e.message,
+                    'raw_event': e.raw_event
+                } for e in items],
+                'next_cursor': next_cursor
+            })
         
+        # Fallback to Alert table if SecurityEvent is empty
+        query = db.session.query(Alert).order_by(desc(Alert.created_at))
         if cursor:
             cursor_alert = db.session.query(Alert).filter_by(id=cursor).first()
             if cursor_alert:
                 query = query.filter(Alert.created_at < cursor_alert.created_at)
         
         items = query.limit(limit + 1).all()
-        
         next_cursor = None
         if len(items) > limit:
             next_cursor = items[-2].id
@@ -132,6 +158,7 @@ def get_raw_stream():
         })
     except Exception as e:
         return error_response('InternalError', str(e), 500)
+
 
 @api.route('/alerts', methods=['GET'])
 @authenticate
@@ -268,7 +295,6 @@ def list_incidents():
     except Exception as e:
         return error_response('InternalError', str(e), 500)
 
-@api.route('/incidents/<incident_id>', methods=['GET'])
 @authenticate
 def get_incident_detail(incident_id):
     """Get full incident details."""
