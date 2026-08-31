@@ -137,9 +137,9 @@ Synthetic generators `agent.py` and `log_generator.sh` were removed. The collect
 | `vulnerable_app.py`, `Dockerfile.vulnerable`, `pentesting_scripts/` | Deliberately vulnerable training/lab material; do not deploy in production. |
 | `app/`, `siem_server.py`, `nginx.conf`, `Dockerfile.siem`, `Dockerfile.frontend` | Earlier standalone SIEM implementation retained for reference; not loaded by the Compose backend. |
 | `filebeat.yml`, `logstash.conf` | Earlier Filebeat/Logstash pipeline configuration; current production collector uses the authenticated HTTP ingestion API. |
+| `doc/` | Comprehensive platform documentation: `API_SPECIFICATION.md`, `ARCHITECTURE.md`, `CODE_SNIPPETS.md`, `IMPORTANT_FACTS.md`, `TESTING_AND_INTEGRATION.md`, `vision_corp.md`, `vision_scada.md`, `SYSTEM_REFERENCE.md`. |
 | `frontend/` | React/Vite development source for dashboards and corporate/SCADA pages. |
 | `test_endpoints.sh`, `test_soar.py`, `test_service_logs.py` | Integration and training test scripts. |
-| `README.md`, `ARCHITECTURE.md`, `API_SPECIFICATION.md`, `TESTING_AND_INTEGRATION.md`, `IMPORTANT_FACTS.md`, `vision_*.md` | Project notes and earlier reference documentation; this file is the current runtime reference. |
 
 ## Production checklist
 
@@ -147,4 +147,4 @@ Synthetic generators `agent.py` and `log_generator.sh` were removed. The collect
 2. Mount real, access-controlled application/device logs at `./logs` and start the collector profile.
 3. Configure OIDC/SAML/JWT validation in `backend/app/auth.py`; do not rely on the legacy user-ID header.
 4. Install a trusted TLS certificate and add an Nginx `listen 443 ssl` server block before exposing HTTPS.
-5. Configure the SCADA gateway with actual PLC addresses; do not use simulator data for production telemetry.
+5. Configure the SCADA gateway with actual PLC addresses or register dynamic machines via `POST /api/scada/machines/register`.
