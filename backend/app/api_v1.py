@@ -105,20 +105,41 @@ def get_raw_stream():
     """Stream raw logs and security events directly as a JSON list for the live dashboard."""
     try:
         limit = min(int(request.args.get('limit', 100)), 500)
+        source_filter = request.args.get('source')
+        category_filter = request.args.get('category')
         
-        # Query latest real SecurityEvent rows from PostgreSQL
-        events = db.session.query(SecurityEvent).order_by(desc(SecurityEvent.occurred_at), desc(SecurityEvent.received_at)).limit(limit).all()
+        query = db.session.query(SecurityEvent)
+        if source_filter:
+            query = query.filter(SecurityEvent.source.ilike(f'%{source_filter}%'))
+            
+        events = query.order_by(desc(SecurityEvent.occurred_at), desc(SecurityEvent.received_at)).limit(limit).all()
         
         if events:
-            # Return in chronological order so newest appears in stream correctly
-            formatted = [{
-                'id': e.id,
-                'timestamp': e.occurred_at.strftime('%I:%M:%S %p') if e.occurred_at else (e.received_at.strftime('%I:%M:%S %p') if e.received_at else datetime.utcnow().strftime('%I:%M:%S %p')),
-                'level': e.severity.upper() if e.severity else 'INFO',
-                'host': e.source or 'system',
-                'message': e.message,
-                'raw_event': e.raw_event
-            } for e in reversed(events)]
+            formatted = []
+            for e in reversed(events):
+                src = (e.source or 'system').lower()
+                msg = (e.message or '').lower()
+                cat = 'SYSTEM'
+                if 'plc' in src or 'scada' in src or 'modbus' in msg or 'heater' in msg or 'refinery' in msg:
+                    cat = 'SCADA_OT'
+                elif 'corp' in src or 'portal' in msg or 'task' in msg or 'announcement' in msg:
+                    cat = 'CORP_PORTAL'
+                elif 'auth' in msg or 'login' in msg or 'session' in msg or 'password' in msg:
+                    cat = 'AUTH'
+
+                if category_filter and cat.lower() != category_filter.lower():
+                    continue
+
+                formatted.append({
+                    'id': e.id,
+                    'timestamp': e.occurred_at.strftime('%I:%M:%S %p') if e.occurred_at else (e.received_at.strftime('%I:%M:%S %p') if e.received_at else datetime.utcnow().strftime('%I:%M:%S %p')),
+                    'iso_timestamp': e.occurred_at.isoformat() if e.occurred_at else (e.received_at.isoformat() if e.received_at else datetime.utcnow().isoformat()),
+                    'level': e.severity.upper() if e.severity else 'INFO',
+                    'host': e.source or 'system',
+                    'category': cat,
+                    'message': e.message,
+                    'raw_event': e.raw_event
+                })
             return jsonify(formatted), 200
             
         # Fallback to Alert table if SecurityEvent is empty
@@ -126,8 +147,10 @@ def get_raw_stream():
         formatted_alerts = [{
             'id': a.id,
             'timestamp': a.timestamp.strftime('%I:%M:%S %p') if a.timestamp else datetime.utcnow().strftime('%I:%M:%S %p'),
+            'iso_timestamp': a.timestamp.isoformat() if a.timestamp else datetime.utcnow().isoformat(),
             'level': a.severity.upper() if a.severity else 'INFO',
             'host': a.source or 'system',
+            'category': 'SCADA_OT' if 'plc' in (a.source or '').lower() else 'CORP_PORTAL',
             'message': a.title,
             'raw_event': a.raw_event
         } for a in reversed(alerts)]
@@ -160,7 +183,7 @@ def list_alerts():
             query = query.filter_by(assignee_id=assignee)
         
         total = query.count()
-        items = query.order_by(desc(Alert.detected_at)).offset(
+        items = query.order_by(desc(Alert.timestamp), desc(Alert.created_at)).offset(
             (page - 1) * page_size
         ).limit(page_size).all()
         
@@ -171,9 +194,12 @@ def list_alerts():
             'severity': a.severity,
             'status': a.status,
             'source': a.source,
+            'rule_id': a.rule_id,
+            'raw_event': a.raw_event,
             'assignee_id': a.assignee_id,
             'assignee_name': a.assignee.username if a.assignee else None,
-            'detected_at': a.detected_at.isoformat() if a.detected_at else None,
+            'detected_at': a.detected_at.isoformat() if a.detected_at else (a.timestamp.isoformat() if a.timestamp else None),
+            'timestamp': a.timestamp.isoformat() if a.timestamp else (a.created_at.isoformat() if a.created_at else None),
             'created_at': a.created_at.isoformat() if a.created_at else None
         } for a in items], total, page, page_size))
     except Exception as e:

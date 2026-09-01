@@ -166,8 +166,91 @@ def process_event_batch(events):
         except (TypeError, ValueError) as error:
             rejected.append({'index': index, 'error': str(error)})
             
+    # Evaluate Cross-Boundary Multi-Stage Attack Correlation Engine
+    _evaluate_cross_boundary_correlation()
+    
     db.session.commit()
     return {'accepted': accepted, 'rejected': rejected, 'new_devices': new_devices}
+
+
+def _evaluate_cross_boundary_correlation():
+    """Correlate multi-stage attacks spanning Corporate Portal -> SCADA HMI -> OT Physical PLCs."""
+    try:
+        from datetime import timedelta
+        cutoff = datetime.utcnow() - timedelta(minutes=30)
+        recent_events = db.session.query(SecurityEvent).filter(
+            SecurityEvent.occurred_at >= cutoff
+        ).order_by(SecurityEvent.occurred_at.asc()).all()
+
+        stage1_events = []  # Corp Portal / Web Access / Failed Logins
+        stage2_events = []  # SCADA HMI Audit & Setpoint Manipulations
+        stage3_events = []  # OT Network / PLC Command Executions / Alarms
+
+        for ev in recent_events:
+            raw = ev.raw_event if isinstance(ev.raw_event, dict) else {}
+            log_source = str(raw.get('log_source') or ev.source or '').lower()
+            evt_type = str(raw.get('event_type') or '').lower()
+            msg = (ev.message or '').lower()
+            
+            # Stage 1: Corp IT / Identity
+            if 'corp' in log_source or 'portal' in log_source or 'waf' in log_source or 'auth' in evt_type or 'login' in msg:
+                stage1_events.append(ev)
+            # Stage 2: SCADA HMI
+            elif 'hmi' in log_source or 'scada' in log_source or 'setpoint' in msg or 'audit' in evt_type or 'operator' in msg:
+                stage2_events.append(ev)
+            # Stage 3: OT Network & PLCs
+            elif 'plc' in log_source or 'ot_sensor' in log_source or 'command' in evt_type or 'temperature' in msg or 'pressure' in msg or 'flow' in msg or 'cpu_stop' in msg or 'heater' in msg:
+                stage3_events.append(ev)
+
+        # Trigger Multi-Stage Correlation if all 3 domains have suspicious activities
+        if stage1_events and stage2_events and stage3_events:
+            rule_id = 'CORR-MULTI-STAGE-ICS-ATTACK'
+            existing_corr = db.session.query(Alert).filter_by(rule_id=rule_id, status='open').first()
+            if not existing_corr:
+                corr_id = f"CORR-ICS-{uuid.uuid4().hex[:6].upper()}"
+                s1 = stage1_events[-1]
+                s2 = stage2_events[-1]
+                s3 = stage3_events[-1]
+                
+                corr_payload = {
+                    'timestamp': datetime.utcnow().isoformat() + 'Z',
+                    'correlation_id': corr_id,
+                    'severity': 'Critical',
+                    'stage_1_corp': {
+                        'log_source': s1.raw_event.get('log_source', s1.source),
+                        'message': s1.message,
+                        'user': s1.raw_event.get('user', 'unknown'),
+                        'src_ip': s1.raw_event.get('src_ip', 'unknown')
+                    },
+                    'stage_2_hmi': {
+                        'log_source': s2.raw_event.get('log_source', s2.source),
+                        'message': s2.message,
+                        'action': s2.raw_event.get('action', 'Setpoint_Change'),
+                        'user': s2.raw_event.get('user', 'operator')
+                    },
+                    'stage_3_ot': {
+                        'log_source': s3.raw_event.get('log_source', s3.source),
+                        'message': s3.message,
+                        'dest_asset': s3.raw_event.get('dest_asset', 'PLC_REFINERY_1'),
+                        'protocol': s3.raw_event.get('protocol', 'ModbusTCP')
+                    },
+                    'mitre_ics_tactics': ['TA0100 (Initial Access)', 'TA0108 (Inhibit Response)', 'TA0105 (Impair Process Control)'],
+                    'mitre_ics_techniques': ['T0812 (Default Credentials)', 'T0836 (Modify Parameter)', 'T0803 (Command, Control & Signaling)']
+                }
+
+                db.session.add(Alert(
+                    id=str(uuid.uuid4()),
+                    alert_id=corr_id,
+                    title="[CORRELATION CRITICAL] Multi-Stage Cyber-Physical Attack: Credential Compromise -> SCADA Setpoint Manipulation -> PLC Process Impairment",
+                    severity='critical',
+                    status='open',
+                    source='SIEM_Correlation_Engine',
+                    rule_id=rule_id,
+                    timestamp=datetime.utcnow(),
+                    raw_event=corr_payload
+                ))
+    except Exception:
+        pass
 
 @api.route('/ingest/events', methods=['POST'])
 def ingest_events():

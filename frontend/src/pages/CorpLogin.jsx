@@ -26,17 +26,21 @@ export default function CorpLogin() {
 
       if (response.ok) {
         sessionStorage.setItem('corp_user', JSON.stringify(data.user));
+        if (data.access_token) {
+          sessionStorage.setItem('corp_token', data.access_token);
+        }
         setMessageType('success');
-        setMessage(`✓ Welcome ${data.user.username}! Authentication successful.`);
+        setMessage(`✓ Welcome ${data.user.username}! Session established.`);
         setUsername('');
         setPassword('');
 
         setTimeout(() => {
           navigate('/corp_portal/dashboard');
-        }, 1000);
+        }, 800);
       } else {
         setMessageType('error');
-        setMessage(`✗ ${data.message || 'Authentication failed'}`);
+        const errDetails = data.error?.message || data.message || 'Invalid username or password';
+        setMessage(`✗ ${errDetails}`);
       }
     } catch (error) {
       setMessageType('error');

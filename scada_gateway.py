@@ -57,14 +57,33 @@ class SiemPublisher:
 
     def publish_event(self, event_type, host, message, level='info', device_meta=None, extra_meta=None):
         """Enqueue an event for asynchronous parallel transmission to SIEM."""
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.utcnow().isoformat() + 'Z'
         event = {
-            'timestamp': timestamp + 'Z',
-            'level': level,
+            'timestamp': timestamp,
+            'log_source': device_meta.get('log_source') or f"SCADA_HMI_{host}" if 'hmi' in str(host).lower() else f"OT_Sensor_{host}",
             'source': 'ot-scada-gateway',
             'host': host,
-            'message': message,
             'event_type': event_type,
+            'severity': level.capitalize() if level else 'Info',
+            'level': level,
+            'message': message,
+            # OT Network & Industrial standard fields
+            'src_ip': device_meta.get('src_ip', '10.50.20.14'),
+            'src_mac': device_meta.get('src_mac', '00:1A:2B:3C:4D:5E'),
+            'dest_ip': device_meta.get('dest_ip', '192.168.100.5' if 'refinery-1' in host else '192.168.100.6'),
+            'dest_asset': device_meta.get('dest_asset', f"PLC_{host.replace('ot-plc-', '').replace('-', '_').upper()}"),
+            'protocol': device_meta.get('protocol', 'ModbusTCP'),
+            'action': device_meta.get('action', event_type),
+            # MITRE ICS Mappings
+            'mitre_ics_tactic': device_meta.get('mitre_ics_tactic', 'TA0104' if 'command' in event_type.lower() else 'TA0105'),
+            'mitre_ics_technique': device_meta.get('mitre_ics_technique', 'T855' if 'command' in event_type.lower() else 'T836'),
+            # SCADA HMI Audit standard fields
+            'user': device_meta.get('user') or device_meta.get('actor') or 'operator_console',
+            'session_id': device_meta.get('session_id', 'HMI-SESS-992B'),
+            'tag_name': device_meta.get('tag_name') or device_meta.get('metric') or 'Process_Value',
+            'previous_value': str(device_meta.get('previous_value', '')),
+            'new_value': str(device_meta.get('value') or device_meta.get('new_value', '')),
+            'process_area': device_meta.get('process_area', 'Refinery_Process_Zone_1' if 'refinery-1' in host else 'Refinery_Process_Zone_2'),
             'device': {
                 'hostname': host,
                 'device_type': 'plc' if 'plc' in host.lower() else 'scada',
@@ -80,44 +99,98 @@ class SiemPublisher:
         except queue.Full:
             logger.warning("SIEM publisher queue full - dropping event")
 
-    def publish_change(self, machine_id, metric, value, timestamp):
+    def publish_change(self, machine_id, metric, value, timestamp, previous_value=None):
         host = f"ot-plc-{machine_id}"
         self.publish_event(
-            event_type='SCADA_METRIC_CHANGE',
+            event_type='PLC_State_Change',
             host=host,
-            message=f"{machine_id} {metric} changed to {value}",
+            message=f"OT Process Telemetry: {machine_id} tag '{metric}' updated to {value}",
             level='info',
-            device_meta={'machine_id': machine_id, 'metric': metric, 'value': value}
+            device_meta={
+                'log_source': f"OT_Sensor_{machine_id.replace('-', '_')}",
+                'machine_id': machine_id,
+                'metric': metric,
+                'tag_name': f"{machine_id}_{metric}".upper(),
+                'previous_value': previous_value or (value - 0.5 if isinstance(value, (int, float)) else value),
+                'value': value,
+                'new_value': value,
+                'action': 'Telemetry_Update',
+                'dest_asset': f"PLC_{machine_id.replace('-', '_').upper()}",
+                'protocol': 'ModbusTCP',
+                'mitre_ics_tactic': 'TA0105',
+                'mitre_ics_technique': 'T836'
+            }
         )
 
     def publish_command(self, machine_id, command, value, reason, status, actor):
         host = f"ot-plc-{machine_id}"
-        level = 'high' if command == 'emergency_stop' or status == 'rejected' else 'info'
+        level = 'critical' if command == 'emergency_stop' else ('high' if status == 'rejected' else 'info')
+        mitre_technique = 'T803' if command == 'emergency_stop' else ('T855' if status == 'rejected' else 'T836')
         self.publish_event(
-            event_type='SCADA_COMMAND',
+            event_type='Command_Execution',
             host=host,
-            message=f"Operator '{actor}' executed {command}={value} on {machine_id} (Status: {status}, Reason: {reason})",
+            message=f"SCADA HMI / OT Command: Operator '{actor}' executed {command}={value} on {machine_id} (Status: {status}, Reason: {reason})",
             level=level,
-            device_meta={'machine_id': machine_id, 'command': command, 'value': value, 'actor': actor, 'status': status}
+            device_meta={
+                'log_source': f"SCADA_HMI_Node_{machine_id.replace('-', '_')}",
+                'machine_id': machine_id,
+                'command': command,
+                'action': command,
+                'value': value,
+                'new_value': value,
+                'user': actor,
+                'actor': actor,
+                'status': status,
+                'tag_name': f"{machine_id}_{command}".upper(),
+                'dest_asset': f"PLC_{machine_id.replace('-', '_').upper()}",
+                'protocol': 'ModbusTCP',
+                'mitre_ics_tactic': 'TA0104',
+                'mitre_ics_technique': mitre_technique,
+                'process_area': 'Refinery_Process_Zone_1' if '1' in machine_id else 'Refinery_Process_Zone_2'
+            }
         )
 
     def publish_alarm(self, alarm_id, machine_id, metric, status, message, severity):
         host = f"ot-plc-{machine_id}"
         self.publish_event(
-            event_type='SCADA_ALARM',
+            event_type='Alarm_Event',
             host=host,
-            message=f"Alarm [{alarm_id}] for {machine_id} {metric}: {message} (State: {status})",
+            message=f"OT Process Alarm [{alarm_id}] on {machine_id} {metric}: {message} (State: {status})",
             level=severity.lower(),
-            device_meta={'alarm_id': alarm_id, 'machine_id': machine_id, 'metric': metric, 'status': status}
+            device_meta={
+                'log_source': f"OT_Sensor_{machine_id.replace('-', '_')}",
+                'alarm_id': alarm_id,
+                'machine_id': machine_id,
+                'metric': metric,
+                'tag_name': f"{machine_id}_{metric}".upper(),
+                'status': status,
+                'action': 'Threshold_Breach',
+                'dest_asset': f"PLC_{machine_id.replace('-', '_').upper()}",
+                'protocol': 'ModbusTCP',
+                'mitre_ics_tactic': 'TA0108',
+                'mitre_ics_technique': 'T803'
+            }
         )
 
     def publish_machine_discovered(self, machine_id, name, host, port):
         self.publish_event(
-            event_type='SCADA_MACHINE_DISCOVERY',
+            event_type='New_Asset_Detection',
             host=host,
-            message=f"New machine detected and registered: {name} ({machine_id}) at {host}:{port}",
-            level='info',
-            device_meta={'machine_id': machine_id, 'name': name, 'host': host, 'port': port}
+            message=f"New industrial asset discovered on OT network segment: {name} ({machine_id}) at {host}:{port}",
+            level='warn',
+            device_meta={
+                'log_source': 'OT_Sensor_Discovery',
+                'machine_id': machine_id,
+                'name': name,
+                'host': host,
+                'dest_ip': host,
+                'dest_asset': name,
+                'port': port,
+                'action': 'Asset_Registered',
+                'protocol': 'ModbusTCP',
+                'mitre_ics_tactic': 'TA0102',
+                'mitre_ics_technique': 'T846'
+            }
         )
 
     def _batch_worker(self):
@@ -140,12 +213,10 @@ class SiemPublisher:
             if not batch:
                 continue
 
-            if not COLLECTOR_TOKEN:
-                # If token is not set yet, discard batch silently
-                continue
-
             try:
-                headers = {'X-Collector-Token': COLLECTOR_TOKEN, 'Content-Type': 'application/json'}
+                headers = {'Content-Type': 'application/json'}
+                if COLLECTOR_TOKEN:
+                    headers['X-Collector-Token'] = COLLECTOR_TOKEN
                 response = self.session.post(SIEM_INGEST_URL, json={'events': batch}, headers=headers, timeout=5)
                 if response.status_code not in (200, 202):
                     logger.warning(f"SIEM ingestion returned status {response.status_code}")

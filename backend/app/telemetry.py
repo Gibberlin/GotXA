@@ -79,14 +79,25 @@ def record_telemetry_event(app, host, level, message, details=None):
                 source.total_events_ingested = (source.total_events_ingested or 0) + 1
                 source.status = 'healthy'
 
-            # Insert SecurityEvent
+            # Insert SecurityEvent with unified schema
+            event_payload = {
+                'timestamp': occurred_at.isoformat() + 'Z',
+                'log_source': (details or {}).get('log_source') or f"System_Daemon_{host.replace('-', '_')}",
+                'event_type': (details or {}).get('event_type') or 'System_Telemetry',
+                'severity': level.capitalize() if level else 'Info',
+                'level': level,
+                'host': host,
+                'message': message,
+                **(details or {})
+            }
+
             sec_event = SecurityEvent(
                 device_id=device.id if device else None,
                 source=host,
                 severity=level.lower(),
                 message=message,
                 occurred_at=occurred_at,
-                raw_event=details or {'host': host, 'level': level, 'message': message}
+                raw_event=event_payload
             )
             db.session.add(sec_event)
             db.session.commit()
