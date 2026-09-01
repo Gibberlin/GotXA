@@ -20,78 +20,79 @@
 
 ## 📖 Overview
 
-**GotXA** is a full-fidelity cybersecurity simulation platform designed for threat detection engineering, incident response training, and industrial control systems (ICS/OT) defense. It pairs realistic corporate web applications and autonomous Modbus TCP industrial PLCs with an enterprise SIEM, automated SOAR playbooks, parallel log ingestion pipelines, and interactive attack daemons.
+**GotXA** is a full-fidelity cybersecurity simulation platform designed for threat detection engineering, incident response training, and industrial control systems (ICS/OT) defense. It pairs realistic corporate web applications and autonomous Modbus TCP industrial PLCs with an enterprise SIEM, automated SOAR playbooks, parallel log ingestion pipelines, and interactive adversary simulation.
 
 ```
-                                 ┌──────────────────────────┐
-                                 │   API Gateway (Nginx)    │
-                                 │   Public Ports 80 / 443  │
-                                 └────────────┬─────────────┘
-                 ┌────────────────────────────┼────────────────────────────┐
-                 ▼                            ▼                            ▼
-         SIEM/SOAR Frontend         Corporate Portal UI            SCADA HMI UI
-         (React · Port 80)           (React · Port 80)           (React · Port 80)
-                 │                            │                            │
-                 └────────────────────────────┼────────────────────────────┘
-                                              ▼
-                                    ┌───────────────────┐
-                                    │  Backend REST API │
-                                    │ Flask · Port 5000 │
-                                    └─────────┬─────────┘
-                              ┌───────────────┼───────────────┐
-                              ▼               ▼               ▼
-                        PostgreSQL          Redis       Celery Worker
-                        (Port 5432)      (Port 6379)     (PDF Engine)
-                              ▲
-                              │
-               ┌──────────────┴──────────────┐
-               │                             │
-    ┌────────────────────┐        ┌────────────────────┐
-    │  SCADA REST Gateway│        │ Parallel Collector │
-    │   Port 5002 /api   │        │     Port 5006      │
-    └──────────┬─────────┘        └──────────┬─────────┘
-               │ (Modbus TCP)                │ (Multi-Threaded Tailing)
-       ┌───────┴───────┐             ┌───────┴───────┐
-       ▼               ▼             ▼               ▼
-    PLC-1 (5003)    PLC-2 (5004)  /logs/corp/*    /logs/ot-*
+                                  ┌──────────────────────────┐
+                                  │   API Gateway (Nginx)    │
+                                  │   Public Ports 80 / 443  │
+                                  └────────────┬─────────────┘
+                 ┌─────────────────────────────┼─────────────────────────────┐
+                 ▼                             ▼                             ▼
+         SIEM/SOAR Frontend          Corporate Portal UI             SCADA HMI UI
+         (React · Port 80/siem)      (React · Port 80/corp)         (React · Port 80/scada)
+                 │                             │                             │
+                 └─────────────────────────────┼─────────────────────────────┘
+                                               ▼
+                                     ┌───────────────────┐
+                                     │  Backend REST API │
+                                     │ Flask · Port 5000 │
+                                     └─────────┬─────────┘
+                               ┌───────────────┼───────────────┐
+                               ▼               ▼               ▼
+                         PostgreSQL          Redis       Celery Worker
+                         (Port 5432)      (Port 6379)     (PDF Engine)
+                               ▲               ▲               ▲
+                               │               │               │
+                ┌──────────────┴───────────────┴───────────────┴───────────────┐
+                │                                                              │
+     ┌────────────────────┐        ┌────────────────────┐           ┌────────────────────┐
+     │  SCADA REST Gateway│        │ Parallel Collector │           │    New_Machine     │
+     │   Port 5002 /api   │        │     Port 5006      │           │(Adversary Sim Node)│
+     └──────────┬─────────┘        └──────────┬─────────┘           └──────────┬─────────┘
+                │ (Modbus TCP)                │ (Multi-Threaded Tailing)       │ (Port Scan / SQLi /
+        ┌───────┴───────┐             ┌───────┴───────┐                        │  Brute / OT Override)
+        ▼               ▼             ▼               ▼                        ▼
+     PLC-1 (5003)    PLC-2 (5004)  /logs/corp/*    /logs/ot-*            Target: gotxa-net
 ```
 
 ---
 
 ## ✨ Key Capabilities
 
-### ⚡ 1. Parallel Telemetry & High-Throughput Ingestion
-*   **Zero Polling Bottlenecks**: SCADA Modbus polling runs on dedicated asyncio event loops with connection pooling.
-*   **Asynchronous Batch Publishing**: Decoupled `SiemPublisher` buffers operational telemetry in a thread-safe queue and streams batches to SIEM via worker threads.
-*   **Multi-Threaded Log Tailing**: `ParallelLogCollector` concurrently tails log streams across multiple endpoints without cross-blocking.
+### ⚡ 1. Normalized Industry-Standard JSON Ingestion
+*   **OT Network Telemetry (`OT_Sensor_Zone3`)**: Deep Packet Inspection (DPI) sensor format detailing `dest_asset`, `protocol`, `mitre_ics_tactic` (`TA0108`), `mitre_ics_technique` (`T836`), `tag_name`, and register values.
+*   **SCADA HMI Audit Logs (`SCADA_HMI_Node_A`)**: Captures operator setpoint modifications, emergency valve trips, `user`, `session_id`, and `process_area`.
+*   **Corporate Portal WAF (`Corp_Vendor_Portal_WAF`)**: Ingests web authentication events, failed logins, credential sprays, `geoip_country`, `request_uri`, and `user_agent`.
 
-### 🔍 2. Real Operational & Forensic Logging
-*   **Authentic Telemetry**: Eliminated all pseudo-random placeholder strings.
-*   **Modbus Operations**: Emits structured logs on register read/writes, setpoint updates, and safety envelope violations.
-*   **Audit Trail**: Records authentic application events (SQL queries, auth attempts, diagnostic commands) with ISO-8601 timestamps and IP metadata.
+### 🔗 2. Cross-Boundary Multi-Stage Attack Correlation
+*   **Automated Attack Chain Detection**: Built-in correlation engine detects multi-stage lateral movement:
+    1. **Stage 1 (Corporate IT)**: Credential stuffing or failed login brute-force attempts.
+    2. **Stage 2 (SCADA HMI)**: Operator session compromise and setpoint adjustments.
+    3. **Stage 3 (Physical OT)**: Unauthorized actuator overrides or thermal overrun commands.
+*   **High-Priority Incident Creation**: Automatically correlates all three stages into a single high-priority security incident `CORR-MULTI-STAGE-ICS-ATTACK` with full MITRE ICS technique mapping.
 
-### 🌐 3. Dynamic Machine Auto-Discovery
-*   **SCADA Dynamic Registry**: Discover and register new PLCs at runtime via `POST /api/scada/machines/register` with automated poller task instantiation.
-*   **Dynamic Log Discovery**: Scans the `/logs` directory tree, automatically detecting newly created machine folders without service restarts.
-*   **SIEM Device Inventory**: Automatically catalogs new network devices in PostgreSQL, assigns trust states, and raises `NEW_DEVICE_DETECTED` alerts.
+### ⚔️ 3. Isolated Adversary Simulation Node (`New_Machine`)
+*   **Dedicated Red Team Container**: `New_Machine` runs inside `gotxa-net` (`172.26.0.5`) to simulate adversary attacks.
+*   **Automated Exploit Suites**: Pre-packaged scripts for internal reconnaissance (`port_scanner.py`), SQL injection (`attack_sqli.py`), corporate credential spraying (`attack_bruteforce.py`), and OT Modbus overrides (`attack_modbus_ot.py`).
+*   **Real-Time SIEM Ingestion Verification**: All attacks executed from `New_Machine` generate real-time SIEM logs with actual source IP attribution (`172.26.0.5`).
 
 ### 🛡️ 4. Automated SOAR Response Playbooks
-*   **Closed-Loop Defense**: Attack $\rightarrow$ Real Log Ingestion $\rightarrow$ Rule Engine $\rightarrow$ Alert Generation $\rightarrow$ SOAR Playbook Execution.
-*   **Active Mitigations**: Dynamic `iptables` IP blocking, Docker container lateral isolation, service reboot, and account credential locking.
-*   **Safety Guardrails**: 60-second cooldown timers, subnet whitelisting (protects bridges/gateways), and dual-approval workflows for high-risk actions.
+*   **Closed-Loop Defense**: Attack $\rightarrow$ Real-Time Ingestion $\rightarrow$ Rule Engine $\rightarrow$ Alert Generation $\rightarrow$ SOAR Playbook Execution.
+*   **Active Mitigations**: Dynamic `iptables` IP blocking, Docker container lateral isolation, session revocation, and automated containment.
 
 ### 🏭 5. Industrial OT Simulation & Holographic SCADA HMI
 *   **Refinery 1 (Port 5003)**: Crude oil heater (temperature 170–210 °C, pressure 45–75 PSI).
 *   **Refinery 2 (Port 5004)**: Chemical mixer tank (flow rate 25–80 L/min).
-*   **Audited Controls**: Operator setpoint modifications and emergency stop actions are range-validated, executed on Modbus registers, and audited.
+*   **Audited Controls**: Operator setpoint modifications and emergency stop actions are range-validated, executed on Modbus registers, and audited into SIEM.
 
 ---
 
 ## 🚀 Quick Start
 
 ### 1. Prerequisites
-*   [Docker Desktop](https://www.docker.com/products/docker-desktop/) (v24.0+) & Docker Compose (v2.20+)
-*   Git
+*   [Docker Desktop](https://www.docker.com/products/docker-desktop/) (v24.0+) & Docker Compose
+*   Python 3.11+
 
 ### 2. Launch the Stack
 ```bash
@@ -99,73 +100,71 @@
 git clone https://github.com/Gibberlin/GotXA.git
 cd GotXA
 
-# Create environment file
-cp .env.example .env
-
-# Build and launch all multi-tier services
-docker-compose up -d --build
+# Build and launch all multi-tier microservices
+docker compose up -d --build
 ```
 
 ### 3. Access Web Dashboards
 
 | Application | URL | Default Auth / Notes |
 | :--- | :--- | :--- |
-| **SIEM & SOAR Hub** | `http://localhost/` | Security operations console & alerts. |
-| **Corporate Portal** | `http://localhost/corp` | Corporate employee and administrative portal. |
-| **SCADA HMI Dashboard** | `http://localhost/scada` | Real-time industrial process visualization. |
+| **SIEM & SOAR Hub** | `http://localhost/` or `http://localhost/siem/` | Security operations console, live event stream, and incident manager. |
+| **Corporate Portal** | `http://localhost/corp/` | Enterprise workspace with 1-click Demo Account selectors (`admin` / `admin`). |
+| **SCADA HMI Dashboard** | `http://localhost/scada/` | Real-time industrial process visualization and Modbus setpoint controls. |
 | **Unified API Gateway** | `http://localhost/api/` | Reverse-proxied backend REST routes. |
-| **Direct Flask API** | `http://localhost:5000` | Direct backend API (Health: `/health`). |
+| **Direct Backend API** | `http://localhost:5000` | Core Flask API (Health: `/health`). |
 
 ---
 
 ## 🔌 Default Ports & Services Reference
 
-| Service | Internal Port | External Port | Function |
+| Container / Service | Internal Port | External Port | Function |
 | :--- | :--- | :--- | :--- |
-| `api-gateway` | `80`, `443` | `80`, `443` | Nginx reverse proxy routing. |
-| `gotxa-backend` | `5000` | `5000` | Core Flask REST API. |
+| `api-gateway` | `80`, `443` | `80`, `443` | Nginx reverse proxy routing `/`, `/corp/`, `/scada/`, `/siem/`, and `/api/`. |
+| `gotxa-backend` | `5000` | `5000` | Core Flask REST API, authentication, and SIEM rule engine. |
+| `corp-portal-frontend` | `80` | Internal | Corporate Portal React SPA. |
+| `scada-frontend` | `80` | Internal | SCADA HMI Holographic Dashboard React SPA. |
+| `siem-soar-frontend` | `80` | Internal | SIEM Operations Console React SPA. |
+| `New_Machine` | Internal | Internal | Red Team & Adversary Simulation Node (`172.26.0.5`). |
 | `siem-postgres` | `5432` | `5432` | PostgreSQL relational database (`siem_db`). |
-| `redis-cache` | `6379` | Internal | Celery broker and cache. |
+| `redis-cache` | `6379` | Internal | Celery broker, rate limiting, and cache. |
 | `celery-worker` | Internal | Internal | Asynchronous PDF report generator. |
-| `corp-portal-agent` | `5001` | `5001` | Vulnerable corporate web app for cyber range exercises. |
 | `ot-scada-gateway` | `5002` | `5002` | SCADA Modbus polling & command gateway. |
 | `ot-plc-refinery-1` | `5003` | `5003` | Modbus TCP PLC 1 (Heater & Pressure). |
 | `ot-plc-refinery-2` | `5004` | `5004` | Modbus TCP PLC 2 (Flow Rate Mixer). |
-| `log-collector` | `5006` | `5006` | Parallel multi-threaded real log collector. |
 
 ---
 
 ## 🧪 Security & Threat Simulation
 
-Verify the automated defense loop by running the built-in test runner or penetration scripts:
+Execute adversary attacks directly from the **`New_Machine`** container:
 
 ```bash
-# Run the automated end-to-end SOAR test suite
-python test_soar.py
+# 1. Run the entire automated penetration testing suite
+docker exec -it New_Machine bash run_all_attacks.sh
 
-# Or execute specific cyber range exploit scripts:
-python pentesting_scripts/attack_sqli.py        # SQL Injection attack
-python pentesting_scripts/attack_bruteforce.py  # Credential brute force
-python pentesting_scripts/attack_rce.py         # Remote code execution
+# 2. Or run specific attack vectors:
+docker exec -it New_Machine python3 attack_bruteforce.py  # Corporate portal credential spray
+docker exec -it New_Machine python3 attack_sqli.py        # SQL injection testing
+docker exec -it New_Machine python3 attack_modbus_ot.py   # Unauthorized PLC Modbus overrides
+docker exec -it New_Machine python3 port_scanner.py       # Internal network recon scan
 ```
 
 ---
 
 ## 📚 Documentation Hub
 
-Exhaustive architectural reports, API references, runbooks, and implementation guides are located in the **[`doc/`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc)** directory:
+Exhaustive architectural reports, API references, runbooks, and implementation guides are located in the **[`doc/`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc)** and **[`For Avirup/`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/For%20Avirup)** directories:
 
 | Document | Purpose |
 | :--- | :--- |
 | **[`doc/IMPORTANT_FACTS.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/IMPORTANT_FACTS.md)** | **Start Here.** Cheat sheet covering ports, credentials, environment variables, and directories. |
-| **[`doc/ARCHITECTURE.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/ARCHITECTURE.md)** | In-depth technical architecture, network zones, parallel pipelines, discovery, and ORM models. |
-| **[`doc/API_SPECIFICATION.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/API_SPECIFICATION.md)** | Exhaustive REST API specification for all 40+ endpoints with request/response schemas. |
-| **[`doc/TESTING_AND_INTEGRATION.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/TESTING_AND_INTEGRATION.md)** | Testing guides, test runners, pentest scripts, and React frontend integration standards. |
-| **[`doc/CODE_SNIPPETS.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/CODE_SNIPPETS.md)** | Production code snippets for IP blocking, container quarantine, Modbus loops, and publisher workers. |
-| **[`doc/SYSTEM_REFERENCE.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/SYSTEM_REFERENCE.md)** | Technical runtime reference for Docker containers, database tables, and production checklists. |
-| **[`doc/vision_corp.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/vision_corp.md)** | Corporate Portal vision, user journey, component hierarchy, and API handoff. |
-| **[`doc/vision_scada.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/vision_scada.md)** | SCADA HMI Hologram Dashboard vision, operator controls, and API handoff. |
-| **[`For Avirup/`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/For%20Avirup)** | Compliance mappings, alarm thresholds, MITRE matrix mappings, and incident response runbooks. |
+| **[`doc/ARCHITECTURE.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/ARCHITECTURE.md)** | In-depth technical architecture, network zones, correlation engine, and ORM models. |
+| **[`doc/API_SPECIFICATION.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/API_SPECIFICATION.md)** | Exhaustive REST API specification for all endpoints with request/response schemas. |
+| **[`doc/TESTING_AND_INTEGRATION.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/TESTING_AND_INTEGRATION.md)** | Testing guides, test runners, and React frontend integration standards. |
+| **[`For Avirup/CONTAINERS_OVERVIEW.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/For%20Avirup/CONTAINERS_OVERVIEW.md)** | Comprehensive Docker container topology, internal networks, and dependencies. |
+| **[`For Avirup/PENTESTING_GUIDE.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/For%20Avirup/PENTESTING_GUIDE.md)** | Complete guide to running red team attacks with `New_Machine`. |
+| **[`For Avirup/MITRE_MAPPING.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/For%20Avirup/MITRE_MAPPING.md)** | MITRE ATT&CK for Enterprise and ICS matrix coverage. |
 
 ---
 

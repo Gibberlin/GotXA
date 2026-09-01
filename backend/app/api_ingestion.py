@@ -1,4 +1,4 @@
-3"""Authenticated production event ingestion and device inventory APIs."""
+"""Authenticated production event ingestion and device inventory APIs."""
 import hmac
 import os
 import uuid

@@ -492,3 +492,72 @@ def list_user_sessions():
         } for s in sessions]
     })
 
+
+# ============================================================================
+# SCADA & OT CONTROL PROXIES & AUDITING
+# ============================================================================
+
+@api.route('/v1/scada/control', methods=['POST'])
+@api.route('/scada/control', methods=['POST'])
+def scada_control():
+    """Handle SCADA control manipulation requests and generate SIEM OT events."""
+    body = request.get_json(silent=True) or {}
+    machine_id = body.get('machine_id', 'r1_heater')
+    action = body.get('action', body.get('command', 'UNKNOWN'))
+    operator = body.get('operator', request.remote_addr)
+    target_val = body.get('target_temperature', body.get('target_psi', body.get('value', 0)))
+    
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    
+    raw_data = {
+        'source_host': f'ot-plc-{machine_id}',
+        'dest_asset': f'PLC-{machine_id.upper()}',
+        'protocol': 'MODBUS_TCP',
+        'event_type': 'PLC_REGISTER_MANIPULATION',
+        'mitre_ics_tactic': 'TA0108 - Impair Process Control',
+        'mitre_ics_technique': 'T836 - Modify Parameter',
+        'tag_name': 'SETPOINT_OVERRIDE',
+        'new_value': target_val,
+        'operator': operator,
+        'ip_address': client_ip,
+        'action': action
+    }
+    
+    evt = SecurityEvent(
+        source=f'ot-plc-{machine_id}',
+        severity='high' if 'OVERRIDE' in action or 'MAX' in action else 'medium',
+        message=f"Unauthorized PLC control override attempt: {action} on {machine_id} by {operator} (Target value: {target_val})",
+        raw_event=raw_data,
+        occurred_at=datetime.utcnow()
+    )
+    db.session.add(evt)
+    
+    # Check if this generates an alert
+    if 'OVERRIDE' in action or 'MAX' in action:
+        alert_uid = str(uuid.uuid4())
+        alert = Alert(
+            id=alert_uid,
+            alert_id=f"ALT-OT-{alert_uid[:8]}",
+            title=f"OT Security Alert: Unauthorized Parameter Override on {machine_id}",
+            severity='critical',
+            status='open',
+            source=f'ot-plc-{machine_id}',
+            rule_id='RULE-OT-UNAUTHORIZED-OVERRIDE',
+            timestamp=datetime.utcnow(),
+            detected_at=datetime.utcnow(),
+            raw_event=raw_data,
+            mitre_tactics=['TA0108 - Impair Process Control', 'T836 - Modify Parameter']
+        )
+        db.session.add(alert)
+        
+    db.session.commit()
+    
+    return jsonify({
+        'status': 'intercepted_and_audited',
+        'machine_id': machine_id,
+        'action': action,
+        'event_id': evt.id,
+        'audit': 'SIEM security event recorded'
+    }), 200
+
+
