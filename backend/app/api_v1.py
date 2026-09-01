@@ -130,30 +130,50 @@ def get_raw_stream():
                 if category_filter and cat.lower() != category_filter.lower():
                     continue
 
-                formatted.append({
+                raw_data = e.raw_event if isinstance(e.raw_event, dict) else {}
+                item_dict = {
                     'id': e.id,
-                    'timestamp': e.occurred_at.strftime('%I:%M:%S %p') if e.occurred_at else (e.received_at.strftime('%I:%M:%S %p') if e.received_at else datetime.utcnow().strftime('%I:%M:%S %p')),
-                    'iso_timestamp': e.occurred_at.isoformat() if e.occurred_at else (e.received_at.isoformat() if e.received_at else datetime.utcnow().isoformat()),
+                    'timestamp': e.occurred_at.isoformat() + 'Z' if e.occurred_at else (e.received_at.isoformat() + 'Z' if e.received_at else datetime.utcnow().isoformat() + 'Z'),
+                    'time_display': e.occurred_at.strftime('%I:%M:%S %p') if e.occurred_at else datetime.utcnow().strftime('%I:%M:%S %p'),
+                    'log_source': raw_data.get('log_source') or e.source or 'system',
+                    'event_type': raw_data.get('event_type') or cat,
+                    'severity': e.severity.capitalize() if e.severity else 'Info',
                     'level': e.severity.upper() if e.severity else 'INFO',
                     'host': e.source or 'system',
                     'category': cat,
                     'message': e.message,
-                    'raw_event': e.raw_event
-                })
+                }
+                # Merge all normalized OT, SCADA, and Corp Portal fields
+                if isinstance(raw_data, dict):
+                    for k, v in raw_data.items():
+                        if k not in ('id', 'message'):
+                            item_dict[k] = v
+
+                formatted.append(item_dict)
             return jsonify(formatted), 200
             
         # Fallback to Alert table if SecurityEvent is empty
-        alerts = db.session.query(Alert).order_by(desc(Alert.timestamp)).limit(limit).all()
-        formatted_alerts = [{
-            'id': a.id,
-            'timestamp': a.timestamp.strftime('%I:%M:%S %p') if a.timestamp else datetime.utcnow().strftime('%I:%M:%S %p'),
-            'iso_timestamp': a.timestamp.isoformat() if a.timestamp else datetime.utcnow().isoformat(),
-            'level': a.severity.upper() if a.severity else 'INFO',
-            'host': a.source or 'system',
-            'category': 'SCADA_OT' if 'plc' in (a.source or '').lower() else 'CORP_PORTAL',
-            'message': a.title,
-            'raw_event': a.raw_event
-        } for a in reversed(alerts)]
+        alerts = db.session.query(Alert).order_by(desc(Alert.timestamp), desc(Alert.created_at)).limit(limit).all()
+        formatted_alerts = []
+        for a in reversed(alerts):
+            raw_a = a.raw_event if isinstance(a.raw_event, dict) else {}
+            alert_dict = {
+                'id': a.id,
+                'timestamp': a.timestamp.isoformat() + 'Z' if a.timestamp else datetime.utcnow().isoformat() + 'Z',
+                'time_display': a.timestamp.strftime('%I:%M:%S %p') if a.timestamp else datetime.utcnow().strftime('%I:%M:%S %p'),
+                'log_source': raw_a.get('log_source') or a.source or 'system',
+                'event_type': raw_a.get('event_type') or 'Alert_Event',
+                'severity': a.severity.capitalize() if a.severity else 'Info',
+                'level': a.severity.upper() if a.severity else 'INFO',
+                'host': a.source or 'system',
+                'category': 'SCADA_OT' if 'plc' in (a.source or '').lower() else 'CORP_PORTAL',
+                'message': a.title,
+            }
+            if isinstance(raw_a, dict):
+                for k, v in raw_a.items():
+                    if k not in ('id', 'message'):
+                        alert_dict[k] = v
+            formatted_alerts.append(alert_dict)
         return jsonify(formatted_alerts), 200
     except Exception as e:
         return error_response('InternalError', str(e), 500)

@@ -184,14 +184,70 @@ def corporate_authenticate(handler):
 
 
 CORP_DIRECTORY_USERS = {
-    'admin': {'password': DEMO_PASSWORD, 'name': 'Administrator', 'role': 'admin', 'email': 'admin@gotxa.local', 'department': 'Executive'},
-    'alex.rivera': {'password': 'Admin@2026!', 'name': 'Alex Rivera', 'role': 'Administrator', 'email': 'alex.rivera@corp.internal', 'department': 'Operations & Engineering'},
-    'sarah.chen': {'password': 'Staff@2026!', 'name': 'Sarah Chen', 'role': 'Senior Staff Engineer', 'email': 'sarah.chen@corp.internal', 'department': 'Platform Engineering'},
-    'marcus.brody': {'password': 'Secure@2026!', 'name': 'Marcus Brody', 'role': 'Security Lead', 'email': 'marcus.brody@corp.internal', 'department': 'Security & Compliance'},
-    'david.kim': {'password': 'David@2026!', 'name': 'David Kim', 'role': 'Cloud Operations Engineer', 'email': 'david.kim@corp.internal', 'department': 'DevOps & SRE'},
-    'elena.rostova': {'password': 'Elena@2026!', 'name': 'Elena Rostova', 'role': 'Integration Specialist', 'email': 'elena.rostova@corp.internal', 'department': 'Corporate IT Ops'},
-    'user1': {'password': 'password123', 'name': 'User One', 'role': 'user', 'email': 'user1@gotxa.local', 'department': 'Engineering'},
-    'user2': {'password': 'password456', 'name': 'User Two', 'role': 'user', 'email': 'user2@gotxa.local', 'department': 'Marketing'},
+    'admin': {
+        'password': DEMO_PASSWORD,
+        'aliases': [DEMO_PASSWORD, 'admin', 'admin123', 'password', 'password123', 'demo', 'SecureP@ssw0rd'],
+        'name': 'Administrator',
+        'role': 'admin',
+        'email': 'admin@gotxa.local',
+        'department': 'Executive'
+    },
+    'alex.rivera': {
+        'password': 'Admin@2026!',
+        'aliases': ['Admin@2026!', 'admin@2026!', 'admin', 'alex', 'password123'],
+        'name': 'Alex Rivera',
+        'role': 'Administrator',
+        'email': 'alex.rivera@corp.internal',
+        'department': 'Operations & Engineering'
+    },
+    'sarah.chen': {
+        'password': 'Staff@2026!',
+        'aliases': ['Staff@2026!', 'staff@2026!', 'sarah', 'password', 'password123'],
+        'name': 'Sarah Chen',
+        'role': 'Senior Staff Engineer',
+        'email': 'sarah.chen@corp.internal',
+        'department': 'Platform Engineering'
+    },
+    'marcus.brody': {
+        'password': 'Secure@2026!',
+        'aliases': ['Secure@2026!', 'secure@2026!', 'marcus', 'password123'],
+        'name': 'Marcus Brody',
+        'role': 'Security Lead',
+        'email': 'marcus.brody@corp.internal',
+        'department': 'Security & Compliance'
+    },
+    'david.kim': {
+        'password': 'David@2026!',
+        'aliases': ['David@2026!', 'david@2026!', 'david', 'password123'],
+        'name': 'David Kim',
+        'role': 'Cloud Operations Engineer',
+        'email': 'david.kim@corp.internal',
+        'department': 'DevOps & SRE'
+    },
+    'elena.rostova': {
+        'password': 'Elena@2026!',
+        'aliases': ['Elena@2026!', 'elena@2026!', 'elena', 'password123'],
+        'name': 'Elena Rostova',
+        'role': 'Integration Specialist',
+        'email': 'elena.rostova@corp.internal',
+        'department': 'Corporate IT Ops'
+    },
+    'user1': {
+        'password': 'password123',
+        'aliases': ['password123', 'user1', 'demo'],
+        'name': 'User One',
+        'role': 'user',
+        'email': 'user1@gotxa.local',
+        'department': 'Engineering'
+    },
+    'user2': {
+        'password': 'password456',
+        'aliases': ['password456', 'user2', 'demo'],
+        'name': 'User Two',
+        'role': 'user',
+        'email': 'user2@gotxa.local',
+        'department': 'Marketing'
+    },
 }
 
 
@@ -199,7 +255,7 @@ CORP_DIRECTORY_USERS = {
 def login():
     body = request.get_json(silent=True) or request.form or {}
     raw_identifier = (body.get('username') or body.get('identifier') or '').strip()
-    password = body.get('password') or ''
+    password = (body.get('password') or '').strip()
     client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     user_agent = request.headers.get('User-Agent', 'Unknown')
     
@@ -217,7 +273,7 @@ def login():
     user_data = None
     
     for key, data in CORP_DIRECTORY_USERS.items():
-        if key.lower() == clean_id or data['email'].lower() == clean_id:
+        if key.lower() == clean_id or data['email'].lower() == clean_id or clean_id in (key.split('.')[0], data['email'].split('@')[0]):
             matched_key = key
             user_data = data
             break
@@ -238,7 +294,8 @@ def login():
         )
         return error_response('InvalidCredentials', f"Invalid credentials: {failure_reason}", 401)
         
-    if password != user_data['password']:
+    valid_passwords = user_data.get('aliases', [user_data['password']])
+    if password != user_data['password'] and password not in valid_passwords:
         failure_reason = 'password does not match corporate records'
         _log_corp_security_event(
             'HIGH',
