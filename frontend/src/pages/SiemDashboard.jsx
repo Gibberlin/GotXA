@@ -42,96 +42,6 @@ export default function SiemDashboard() {
   const [r2FlowSetpoint, setR2FlowSetpoint] = useState(55);
   const [isControlling, setIsControlling] = useState(false);
 
-  // Reports State
-  const [isDownloadingReport, setIsDownloadingReport] = useState(false);
-  const [reportsArchive, setReportsArchive] = useState([]);
-  const [selectedReportType, setSelectedReportType] = useState('executive');
-  const [customReportTitle, setCustomReportTitle] = useState('');
-
-  const showNotification = (msg, type = 'info') => {
-    setActionNotice({ msg, type });
-    setTimeout(() => setActionNotice(null), 4500);
-  };
-
-  const fetchReportsArchive = async () => {
-    try {
-      const res = await fetch('/api/reports');
-      if (res.ok) {
-        const json = await res.json();
-        setReportsArchive(json.data?.items || json.items || []);
-      }
-    } catch (err) {
-      console.error('Failed to fetch reports archive:', err);
-    }
-  };
-
-  const handleDownloadReport = async (reportType = 'executive') => {
-    setIsDownloadingReport(true);
-    showNotification(`⏳ Compiling ${reportType.toUpperCase()} security audit PDF with GotXA logo & TOC...`, 'info');
-    try {
-      const response = await fetch(`/api/reports/download?type=${reportType}`);
-      if (!response.ok) {
-        throw new Error(`Server returned HTTP ${response.status}`);
-      }
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `GotXA_Security_Report_${reportType}_${new Date().toISOString().slice(0, 10)}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-      showNotification(`✓ Successfully downloaded GotXA ${reportType.toUpperCase()} PDF report!`, 'success');
-      fetchReportsArchive();
-    } catch (err) {
-      console.error('PDF download error:', err);
-      showNotification(`❌ Error downloading report: ${err.message}`, 'error');
-    } finally {
-      setIsDownloadingReport(false);
-    }
-  };
-
-  const handleGenerateCustomReport = async (e) => {
-    if (e) e.preventDefault();
-    setIsDownloadingReport(true);
-    showNotification(`⏳ Generating custom ${selectedReportType.toUpperCase()} PDF report...`, 'info');
-    try {
-      const res = await fetch('/api/reports/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: selectedReportType,
-          title: customReportTitle || `GotXA Techs · ${selectedReportType.toUpperCase()} Audit Report`
-        })
-      });
-      if (!res.ok) {
-        throw new Error(`Generation failed: ${res.statusText}`);
-      }
-      const data = await res.json();
-      const dlUrl = data.data?.download_url || `/api/reports/download?type=${selectedReportType}`;
-      
-      // Auto-trigger download
-      const dlRes = await fetch(dlUrl);
-      const blob = await dlRes.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `GotXA_${selectedReportType}_Report_${new Date().toISOString().slice(0, 10)}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-      
-      showNotification(`✓ Report generated & downloaded successfully!`, 'success');
-      fetchReportsArchive();
-    } catch (err) {
-      showNotification(`❌ Error: ${err.message}`, 'error');
-    } finally {
-      setIsDownloadingReport(false);
-    }
-  };
-
   const timerRef = useRef(null);
 
   // Fetch all SIEM data
@@ -201,6 +111,11 @@ export default function SiemDashboard() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [autoRefresh, refreshInterval]);
+
+  const showNotification = (msg, type = 'success') => {
+    setActionNotice({ msg, type });
+    setTimeout(() => setActionNotice(null), 4000);
+  };
 
   // Revoke user session from SIEM
   const handleRevokeSession = async (sessionId, username) => {
@@ -304,14 +219,6 @@ export default function SiemDashboard() {
           </div>
 
           <div className="siem-nav-links">
-            <button
-              className="portal-nav-btn export-pdf-btn"
-              onClick={() => handleDownloadReport('executive')}
-              disabled={isDownloadingReport}
-              title="Download Executive Security Audit PDF with GotXA Logo and Table of Contents"
-            >
-              {isDownloadingReport ? '⏳ Generating PDF...' : '📄 Download PDF Report'}
-            </button>
             <Link to="/corp_portal/dashboard" className="portal-nav-btn corp-btn" target="_blank" rel="noopener noreferrer">
               🏢 Corporate Portal ↗
             </Link>
@@ -353,25 +260,38 @@ export default function SiemDashboard() {
           <div className="kpi-icon ot-icon">🌊</div>
           <div className="kpi-info">
             <span className="kpi-title">SCADA Refinery 2 (Flow)</span>
-            <span className="kpi-val flow-val">{Number(scadaData.refinery_2?.flow_rate || 54.8).toFixed(1)} L/s</span>
-            <span className="kpi-sub">Temp: {Number(scadaData.refinery_2?.temperature || 174.5).toFixed(1)} °C</span>
+            <span className="kpi-val flow-val">{Number(scadaData.refinery_2?.flow_rate || 54.8).toFixed(1)} L/m</span>
+            <span className="kpi-sub">Secondary Temp: {Number(scadaData.refinery_2?.temperature || 174.5).toFixed(1)} °C</span>
           </div>
         </div>
 
         <div className="kpi-card" onClick={() => { setActiveTab('sessions'); }}>
-          <div className="kpi-icon auth-icon">🔐</div>
+          <div className="kpi-icon auth-icon">🔑</div>
           <div className="kpi-info">
             <span className="kpi-title">Active User Sessions</span>
-            <span className="kpi-val">{sessions.length || authStats.active_sessions || 1}</span>
-            <span className="kpi-sub">Failed Logins: {authStats.total_failed_logins || 0}</span>
+            <span className="kpi-val success-val">{authStats.active_sessions || sessions.filter(s => s.is_active).length || 1}</span>
+            <span className="kpi-sub">Total Established: {authStats.total_sessions || sessions.length || 1}</span>
           </div>
         </div>
 
-        <div className="kpi-card alert-kpi-card" onClick={() => { setActiveTab('alerts'); }}>
+        <div className="kpi-card" onClick={() => { setActiveTab('sessions'); }}>
+          <div className="kpi-icon fail-icon">🛑</div>
+          <div className="kpi-info">
+            <span className="kpi-title">Failed Login Attempts</span>
+            <span className={`kpi-val ${authStats.total_failed_logins > 0 ? 'danger-val' : 'neutral-val'}`}>
+              {authStats.total_failed_logins || metrics.failed_logins || 0}
+            </span>
+            <span className="kpi-sub">
+              {authStats.brute_force_alert ? '⚠️ BRUTE FORCE ALERT' : 'Audit Monitored'}
+            </span>
+          </div>
+        </div>
+
+        <div className="kpi-card" onClick={() => { setActiveTab('alerts'); }}>
           <div className="kpi-icon alert-icon">🚨</div>
           <div className="kpi-info">
-            <span className="kpi-title">Security Alarms</span>
-            <span className={`kpi-val ${alerts.length > 0 ? 'critical-alert-pulse' : ''}`}>
+            <span className="kpi-title">Security Alerts</span>
+            <span className={`kpi-val ${alerts.length > 0 ? 'warn-val' : 'success-val'}`}>
               {alerts.length}
             </span>
             <span className="kpi-sub">Health: {metrics.security_score || 95}% Posture</span>
@@ -414,13 +334,6 @@ export default function SiemDashboard() {
           onClick={() => setActiveTab('soar')}
         >
           ⚡ SOAR Active Defenses
-        </button>
-
-        <button
-          className={`tab-btn ${activeTab === 'reports' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('reports'); fetchReportsArchive(); }}
-        >
-          📊 Reports & Compliance
         </button>
       </div>
 
@@ -1161,290 +1074,6 @@ export default function SiemDashboard() {
                 >
                   ▶ Standby Trigger
                 </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 6: REPORTS & COMPLIANCE */}
-        {activeTab === 'reports' && (
-          <div className="tab-pane reports-pane">
-            {/* Reports Banner */}
-            <div className="reports-hero-banner">
-              <div className="reports-hero-content">
-                <div className="reports-hero-badge">📑 ENTERPRISE AUDIT & COMPLIANCE</div>
-                <h2>GotXA Techs · Security Operations PDF Reports</h2>
-                <p>
-                  Export executive-grade, audit-ready PDF reports with embedded GotXA corporate branding,
-                  an automated <strong>Table of Contents</strong>, real-time OT telemetry, active security alarms,
-                  and a comprehensive NIST CSF compliance evaluation.
-                </p>
-              </div>
-              <div className="reports-hero-action">
-                <button
-                  className="btn-hero-download"
-                  onClick={() => handleDownloadReport('executive')}
-                  disabled={isDownloadingReport}
-                >
-                  {isDownloadingReport ? '⏳ Compiling PDF...' : '📥 Instant Executive PDF Export'}
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Export Cards */}
-            <div className="reports-section-title">
-              <h3>⚡ Quick-Export Standard Report Suites</h3>
-              <p>Download pre-formatted PDF reports with live database aggregation and branding.</p>
-            </div>
-
-            <div className="reports-cards-grid">
-              <div className="report-card">
-                <div className="report-card-header">
-                  <span className="report-icon">📊</span>
-                  <span className="report-type-badge type-exec">EXECUTIVE</span>
-                </div>
-                <h4>Executive Security Posture Report</h4>
-                <p>High-level overview of enterprise threat landscape, security score (95%), active incidents, and telemetry throughput.</p>
-                <div className="report-card-features">
-                  <span>✓ Executive KPI Cards</span>
-                  <span>✓ Incident Velocity</span>
-                  <span>✓ Table of Contents</span>
-                </div>
-                <button
-                  className="btn-report-download"
-                  onClick={() => handleDownloadReport('executive')}
-                  disabled={isDownloadingReport}
-                >
-                  📄 Download Executive PDF
-                </button>
-              </div>
-
-              <div className="report-card">
-                <div className="report-card-header">
-                  <span className="report-icon">🛡️</span>
-                  <span className="report-type-badge type-nist">COMPLIANCE</span>
-                </div>
-                <h4>NIST CSF & Incident Audit</h4>
-                <p>Detailed evaluation against NIST Core Functions (Identify, Protect, Detect, Respond, Recover) and active alarms.</p>
-                <div className="report-card-features">
-                  <span>✓ 5 NIST Functions</span>
-                  <span>✓ Mitre ATT&CK Map</span>
-                  <span>✓ Remediation Plan</span>
-                </div>
-                <button
-                  className="btn-report-download"
-                  onClick={() => handleDownloadReport('nist')}
-                  disabled={isDownloadingReport}
-                >
-                  📄 Download NIST Audit PDF
-                </button>
-              </div>
-
-              <div className="report-card">
-                <div className="report-card-header">
-                  <span className="report-icon">🏭</span>
-                  <span className="report-type-badge type-scada">OT INDUSTRIAL</span>
-                </div>
-                <h4>Industrial OT & SCADA Process Audit</h4>
-                <p>Modbus TCP telemetry records, Refinery-1 heater & Refinery-2 flow rates, threshold breaches, and PLC health.</p>
-                <div className="report-card-features">
-                  <span>✓ Modbus Register Map</span>
-                  <span>✓ Safety Thresholds</span>
-                  <span>✓ Thermal Analysis</span>
-                </div>
-                <button
-                  className="btn-report-download"
-                  onClick={() => handleDownloadReport('scada')}
-                  disabled={isDownloadingReport}
-                >
-                  📄 Download OT Process PDF
-                </button>
-              </div>
-
-              <div className="report-card">
-                <div className="report-card-header">
-                  <span className="report-icon">🔐</span>
-                  <span className="report-type-badge type-auth">IDENTITY</span>
-                </div>
-                <h4>Authentication & Access Security Audit</h4>
-                <p>Corporate portal login attempts, brute-force attack telemetry, active session tracking, and IP rate-limiting logs.</p>
-                <div className="report-card-features">
-                  <span>✓ User Session Audit</span>
-                  <span>✓ Brute-Force Log</span>
-                  <span>✓ IP Rate Limits</span>
-                </div>
-                <button
-                  className="btn-report-download"
-                  onClick={() => handleDownloadReport('auth_audit')}
-                  disabled={isDownloadingReport}
-                >
-                  📄 Download Auth Audit PDF
-                </button>
-              </div>
-            </div>
-
-            {/* Custom Report Generation Section */}
-            <div className="custom-report-builder-box">
-              <div className="builder-header">
-                <h3>🛠️ Custom Report Configuration & Generator</h3>
-                <p>Tailor report scope, classification headers, and custom titles for internal stakeholders.</p>
-              </div>
-
-              <form onSubmit={handleGenerateCustomReport} className="builder-form">
-                <div className="builder-inputs-grid">
-                  <div className="input-group">
-                    <label>Report Template Type:</label>
-                    <select
-                      value={selectedReportType}
-                      onChange={(e) => setSelectedReportType(e.target.value)}
-                      className="siem-select"
-                    >
-                      <option value="executive">Executive Summary (Board Level)</option>
-                      <option value="nist">NIST CSF Compliance & Audit</option>
-                      <option value="scada">Industrial OT & SCADA Process Audit</option>
-                      <option value="threat_intel">Threat Telemetry & Security Events</option>
-                      <option value="auth_audit">Corporate Identity & Access Audit</option>
-                    </select>
-                  </div>
-
-                  <div className="input-group">
-                    <label>Custom Document Title (Optional):</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Q3 GotXA Industrial Cyber Security & SCADA Audit"
-                      value={customReportTitle}
-                      onChange={(e) => setCustomReportTitle(e.target.value)}
-                      className="siem-input"
-                    />
-                  </div>
-
-                  <div className="input-group">
-                    <label>Security Classification:</label>
-                    <input
-                      type="text"
-                      value="CONFIDENTIAL // RESTRICTED SOC INTERNAL"
-                      disabled
-                      className="siem-input disabled-input"
-                    />
-                  </div>
-                </div>
-
-                <div className="builder-features-ribbon">
-                  <div className="feature-item"><span>🛡️</span> Official GotXA Logo</div>
-                  <div className="feature-item"><span>📑</span> Table of Contents</div>
-                  <div className="feature-item"><span>🔢</span> Numbered Canvas (Page X of Y)</div>
-                  <div className="feature-item"><span>📊</span> Structured Data Tables</div>
-                  <div className="feature-item"><span>⚡</span> Live PostgreSQL Telemetry</div>
-                </div>
-
-                <div className="builder-submit-row">
-                  <button
-                    type="submit"
-                    className="btn-generate-custom"
-                    disabled={isDownloadingReport}
-                  >
-                    {isDownloadingReport ? '⏳ Generating Custom PDF...' : '🚀 Generate & Export Custom PDF Report'}
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            {/* Reports Archive Table */}
-            <div className="reports-archive-box">
-              <div className="panel-header-flex">
-                <div>
-                  <h3>📁 Generated Reports & Audit Archive</h3>
-                  <p className="panel-sub">Recent compliance reports compiled and available for immediate re-download.</p>
-                </div>
-                <button className="btn-secondary" onClick={fetchReportsArchive}>🔄 Refresh Archive</button>
-              </div>
-
-              <div className="table-responsive">
-                <table className="siem-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: '140px' }}>Report ID</th>
-                      <th>Report Title & Scope</th>
-                      <th style={{ width: '120px' }}>Type</th>
-                      <th style={{ width: '100px' }}>Status</th>
-                      <th style={{ width: '160px' }}>Generated Date</th>
-                      <th style={{ width: '130px' }}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reportsArchive.length === 0 ? (
-                      <>
-                        <tr className="log-row">
-                          <td><code>GOTXA-REP-EXEC</code></td>
-                          <td><strong>GotXA Techs · Executive Security Operations Report</strong></td>
-                          <td><span className="badge badge-info">EXECUTIVE</span></td>
-                          <td><span className="status-pill status-closed">READY</span></td>
-                          <td>{new Date().toLocaleDateString()} (Live)</td>
-                          <td>
-                            <button
-                              className="btn-table-dl"
-                              onClick={() => handleDownloadReport('executive')}
-                            >
-                              ⬇️ Download PDF
-                            </button>
-                          </td>
-                        </tr>
-                        <tr className="log-row">
-                          <td><code>GOTXA-REP-NIST</code></td>
-                          <td><strong>NIST Cybersecurity Framework Compliance Audit Report</strong></td>
-                          <td><span className="badge badge-warn">NIST CSF</span></td>
-                          <td><span className="status-pill status-closed">READY</span></td>
-                          <td>{new Date().toLocaleDateString()} (Live)</td>
-                          <td>
-                            <button
-                              className="btn-table-dl"
-                              onClick={() => handleDownloadReport('nist')}
-                            >
-                              ⬇️ Download PDF
-                            </button>
-                          </td>
-                        </tr>
-                        <tr className="log-row">
-                          <td><code>GOTXA-REP-SCADA</code></td>
-                          <td><strong>Industrial OT & SCADA Process Safety Telemetry Audit</strong></td>
-                          <td><span className="badge badge-primary">OT SCADA</span></td>
-                          <td><span className="status-pill status-closed">READY</span></td>
-                          <td>{new Date().toLocaleDateString()} (Live)</td>
-                          <td>
-                            <button
-                              className="btn-table-dl"
-                              onClick={() => handleDownloadReport('scada')}
-                            >
-                              ⬇️ Download PDF
-                            </button>
-                          </td>
-                        </tr>
-                      </>
-                    ) : (
-                      reportsArchive.map((rep, idx) => (
-                        <tr key={rep.report_id || idx} className="log-row">
-                          <td><code>{rep.report_id}</code></td>
-                          <td><strong>{rep.title || `${rep.type} Audit Report`}</strong></td>
-                          <td><span className="badge badge-info">{rep.type?.toUpperCase()}</span></td>
-                          <td>
-                            <span className="status-pill status-closed">
-                              {rep.status?.toUpperCase() || 'COMPLETED'}
-                            </span>
-                          </td>
-                          <td>{rep.generated_at ? new Date(rep.generated_at).toLocaleString() : 'Recent'}</td>
-                          <td>
-                            <button
-                              className="btn-table-dl"
-                              onClick={() => handleDownloadReport(rep.type || 'executive')}
-                            >
-                              ⬇️ Download PDF
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
               </div>
             </div>
           </div>
