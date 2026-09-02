@@ -505,10 +505,13 @@ def scada_control():
     machine_id = body.get('machine_id', 'r1_heater')
     action = body.get('action', body.get('command', 'UNKNOWN'))
     operator = body.get('operator', request.remote_addr)
-    target_val = body.get('target_temperature', body.get('target_psi', body.get('value', 0)))
-    
     client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     
+    # Auto-register connecting client machine in SIEM Device Inventory
+    if client_ip and client_ip not in ('127.0.0.1', 'localhost', '::1'):
+        from app.telemetry import register_connecting_host
+        register_connecting_host(client_ip, user_agent=request.headers.get('User-Agent'), source_hint=f'scada-ot-{machine_id}')
+        
     raw_data = {
         'source_host': f'ot-plc-{machine_id}',
         'dest_asset': f'PLC-{machine_id.upper()}',

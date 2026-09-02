@@ -55,15 +55,21 @@ def _user_payload(user):
 from app.auth import error_response, create_user_session, revoke_user_session
 from app.models import User, UserSession, SecurityEvent, Device, LogSource, Alert, AuditEvent, db
 from app.audit import AuditLogger
+from app.telemetry import register_connecting_host
 
 def _log_corp_security_event(level, message, details=None, is_failed_auth=False):
     """Log an actual security and audit event for Corporate Portal monitoring."""
     try:
         occurred_at = datetime.utcnow()
         host = 'corp-portal'
-        client_ip = (details or {}).get('ip_address') or (request.remote_addr if request else '127.0.0.1')
+        client_ip = (details or {}).get('ip_address') or (request.headers.get('X-Forwarded-For', request.remote_addr) if request else '127.0.0.1')
+        u_agent = (details or {}).get('user_agent') or (request.headers.get('User-Agent', 'Mozilla/5.0') if request else 'Unknown')
         
-        # Update device tracking
+        # Auto-discover and register the connecting client machine in SIEM Device Inventory
+        if client_ip and client_ip not in ('127.0.0.1', 'localhost', '::1'):
+            register_connecting_host(client_ip, user_agent=u_agent, source_hint='corp-portal')
+            
+        # Update server device tracking
         device = db.session.query(Device).filter_by(hostname=host).first()
         if not device:
             device = Device(
