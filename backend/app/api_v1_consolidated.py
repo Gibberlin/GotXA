@@ -628,29 +628,57 @@ def export_assets():
 def create_report():
     """Generate Executive or NIST compliance report."""
     try:
-        data = request.get_json()
+        from app.pdf_generator import generate_report_pdf
+        from app.api_v1_reports import _build_live_report_payload
         
+        data = request.get_json(silent=True) or {}
+        report_type = data.get('type', 'executive')
         report_id = f"REP-{uuid.uuid4().hex[:4].upper()}"
         
+        payload = _build_live_report_payload(report_type=report_type, title=data.get('title'))
+        payload['report_id'] = report_id
+        
+        pdf_buffer = generate_report_pdf(payload)
+        pdf_bytes = pdf_buffer.getvalue()
+        
+        reports_dir = os.getenv('REPORTS_DIR', '/app/reports')
+        os.makedirs(reports_dir, exist_ok=True)
+        file_path = os.path.join(reports_dir, f'report_{report_id}.pdf')
+        with open(file_path, 'wb') as f:
+            f.write(pdf_bytes)
+        
         report = Report(
+            id=str(uuid.uuid4()),
             report_id=report_id,
-            type=data.get('type', 'executive'),
+            type=report_type,
             format=data.get('format', 'pdf'),
-            requested_by_id=g.user.id,
-            status='generating'
+            title=payload['title'],
+            requested_by_id=g.user.id if hasattr(g, 'user') and g.user else None,
+            status='completed',
+            file_path=file_path,
+            file_size=len(pdf_bytes),
+            created_at=datetime.utcnow(),
+            generated_at=datetime.utcnow(),
+            completed_at=datetime.utcnow()
         )
         
         if data.get('range'):
-            report.date_from = datetime.fromisoformat(data['range']['from'])
-            report.date_to = datetime.fromisoformat(data['range']['to'])
+            try:
+                report.date_from = datetime.fromisoformat(data['range']['from'])
+                report.date_to = datetime.fromisoformat(data['range']['to'])
+            except Exception:
+                pass
         
         db.session.add(report)
         db.session.commit()
         
         return success_response({
             'report_id': report_id,
-            'status': 'generating'
-        }, 'Report generation started', 202)
+            'status': 'completed',
+            'download_url': f'/api/reports/{report_id}/download',
+            'file_size': len(pdf_bytes),
+            'title': payload['title']
+        }, 'Report generation completed', 201)
     except Exception as e:
         db.session.rollback()
         return error_response('InternalError', str(e), 500)
