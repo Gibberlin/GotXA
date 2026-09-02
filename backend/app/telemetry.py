@@ -17,6 +17,8 @@ try:
 except ImportError:
     psutil = None
 
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
 logger = logging.getLogger(__name__)
 
 def get_real_system_metrics():
@@ -60,27 +62,31 @@ def record_telemetry_event(app, host, level, message, details=None):
         try:
             from app.models import db, SecurityEvent, Device, LogSource
             occurred_at = datetime.utcnow()
+            host_clean = host.strip().lower()
             
-            # Upsert device record
-            device = db.session.query(Device).filter_by(hostname=host.lower()).first()
-            if not device:
-                device = Device(
-                    hostname=host.lower(),
-                    device_type='web-server' if 'web' in host or 'gateway' in host else ('database-server' if 'db' in host else 'server'),
-                    trust_state='trusted',
-                    first_seen_at=occurred_at,
-                    last_seen_at=occurred_at
-                )
-                db.session.add(device)
-            else:
-                device.last_seen_at = occurred_at
+            # Atomic upsert device record
+            dev_type = 'web-server' if 'web' in host_clean or 'gateway' in host_clean else ('database-server' if 'db' in host_clean else 'server')
+            stmt_dev = pg_insert(Device).values(
+                id=str(uuid.uuid4()),
+                hostname=host_clean,
+                device_type=dev_type,
+                trust_state='trusted',
+                first_seen_at=occurred_at,
+                last_seen_at=occurred_at
+            ).on_conflict_do_update(
+                index_elements=['hostname'],
+                set_={'last_seen_at': occurred_at}
+            ).returning(Device.id)
+            
+            res = db.session.execute(stmt_dev).fetchone()
+            device_id = res[0] if res else None
                 
             # Upsert LogSource record
-            source = db.session.query(LogSource).filter_by(name=host.lower()).first()
+            source = db.session.query(LogSource).filter_by(name=host_clean).first()
             if not source:
                 source = LogSource(
                     id=str(uuid.uuid4()),
-                    name=host.lower(),
+                    name=host_clean,
                     connector_type='system-agent',
                     status='healthy',
                     last_event_timestamp=occurred_at,
@@ -106,7 +112,7 @@ def record_telemetry_event(app, host, level, message, details=None):
             }
 
             sec_event = SecurityEvent(
-                device_id=device.id if device else None,
+                device_id=device_id,
                 source=host,
                 severity=level.lower(),
                 message=message,
@@ -138,131 +144,89 @@ def register_connecting_host(ip_address, hostname=None, user_agent=None, source_
             else:
                 hostname = f"host-{ip_address.replace('.', '-')}"
                 
-        hostname = hostname.lower()
+        hostname = hostname.strip().lower()
         
         # Determine device type & trust state
         is_adversary = 'new-machine' in hostname or 'kali' in (user_agent or '').lower() or ip_address == '172.26.0.5'
         device_type = 'adversary-node' if is_adversary else ('workstation' if 'corp' in (source_hint or '') else 'network-client')
         trust_state = 'untrusted' if is_adversary else 'trusted'
         
-        device = db.session.query(Device).filter(
-            (Device.hostname == hostname) | (Device.ip_address == ip_address)
-        ).first()
+        meta = {
+            'user_agent': user_agent,
+            'discovered_via': source_hint or 'ingress-traffic',
+            'subnet': 'gotxa-net (172.26.0.0/16)',
+            'role': 'Adversary Simulation / Red Team' if is_adversary else 'Corporate Client'
+        }
+
+        stmt_dev = pg_insert(Device).values(
+            id=str(uuid.uuid4()),
+            hostname=hostname,
+            ip_address=ip_address,
+            device_type=device_type,
+            trust_state=trust_state,
+            first_seen_at=occurred_at,
+            last_seen_at=occurred_at,
+            metadata_json=meta
+        ).on_conflict_do_update(
+            index_elements=['hostname'],
+            set_={
+                'ip_address': ip_address,
+                'last_seen_at': occurred_at
+            }
+        ).returning(Device.id)
         
-        if device is None:
-            device = Device(
-                hostname=hostname,
-                ip_address=ip_address,
-                device_type=device_type,
-                trust_state=trust_state,
-                first_seen_at=occurred_at,
-                last_seen_at=occurred_at,
-                metadata_json={
-                    'user_agent': user_agent,
-                    'discovered_via': source_hint or 'ingress-traffic',
-                    'subnet': 'gotxa-net (172.26.0.0/16)',
-                    'role': 'Adversary Simulation / Red Team' if is_adversary else 'Corporate Client'
-                }
-            )
-            db.session.add(device)
-            
-            # Raise SIEM Discovery Alert for new untrusted node
-            alert_id = f"ALT-DEV-{uuid.uuid4().hex[:8]}"
-            alert = Alert(
-                id=str(uuid.uuid4()),
-                alert_id=alert_id,
-                title=f"[DEVICE DISCOVERY] New {'Adversary Node' if is_adversary else 'Host'} Connected: {hostname} ({ip_address})",
-                severity='high' if is_adversary else 'medium',
-                status='open',
-                source='network-discovery',
-                rule_id='RULE-NEW-DEVICE-CONNECTED',
-                timestamp=occurred_at,
-                detected_at=occurred_at,
-                raw_event={
-                    'hostname': hostname,
-                    'ip_address': ip_address,
-                    'device_type': device_type,
-                    'trust_state': trust_state,
-                    'source_hint': source_hint
-                },
-                mitre_tactics=['TA0104 - Initial Access', 'T803 - Automated Discovery']
-            )
-            db.session.add(alert)
-            
-            # Emit SecurityEvent
-            sec_event = SecurityEvent(
-                source='network-discovery',
-                severity='high' if is_adversary else 'info',
-                message=f"New network host detected on gotxa-net: {hostname} (IP: {ip_address}, Role: {device_type})",
-                raw_event={
-                    'log_source': 'Network_Asset_Discovery',
-                    'ip_address': ip_address,
-                    'host': hostname,
-                    'device_type': device_type,
-                    'trust_state': trust_state
-                },
-                occurred_at=occurred_at
-            )
-            db.session.add(sec_event)
-            db.session.commit()
-            logger.info(f"Auto-discovered and registered new network device: {hostname} ({ip_address})")
-        else:
-            device.last_seen_at = occurred_at
-            if not device.ip_address:
-                device.ip_address = ip_address
-            db.session.commit()
-            
-        return device
+        res = db.session.execute(stmt_dev).fetchone()
+        device_id = res[0] if res else None
+        db.session.commit()
+        return device_id
     except Exception as e:
         try:
             db.session.rollback()
         except Exception:
             pass
-        logger.warning(f"Error in register_connecting_host: {e}")
+        logger.warning(f"Could not register connecting host {ip_address}: {e}")
         return None
 
-class SystemTelemetryDaemon:
-    """Background thread that emits periodic real system metrics and service heartbeats."""
+class SystemTelemetryDaemon(threading.Thread):
+    """Background daemon collecting real health & metric events."""
     
-    def __init__(self, app, interval_sec=6):
+    def __init__(self, app, interval_sec=5):
+        super().__init__(daemon=True, name="SystemTelemetryDaemon")
         self.app = app
         self.interval_sec = interval_sec
-        self.thread = None
-        self.running = False
+        self._running = True
         self._counter = 0
 
-    def start(self):
-        if self.running:
-            return
-        self.running = True
-        self.thread = threading.Thread(target=self._run_loop, daemon=True, name="SystemTelemetryDaemon")
-        self.thread.start()
-        logger.info("System Telemetry Daemon started.")
+    def stop(self):
+        self._running = False
 
-    def _run_loop(self):
-        time.sleep(3)  # Allow DB to initialize
-        while self.running:
+    def run(self):
+        time.sleep(3)  # Short warmup for DB
+        logger.info("SystemTelemetryDaemon started. Ingesting real system events into SIEM.")
+        
+        while self._running:
             try:
                 self._counter += 1
                 metrics = get_real_system_metrics()
                 
-                # 1. Web / Gateway Telemetry
+                # 1. SCADA Gateway Telemetry
                 if self._counter % 2 == 0:
                     record_telemetry_event(
                         self.app,
-                        host='web-01',
+                        host='ot-scada-gateway',
                         level='INFO',
-                        message=f"API Gateway active proxy routing: Nginx worker connections nominal | HTTP throughput 200 OK | TLS v1.3 active",
-                        details={'type': 'nginx_telemetry', 'host': 'web-01', **metrics}
+                        message=f"SCADA Modbus polling cycle complete | Event batch verified | CPU: {metrics['cpu_percent']}%",
+                        details={'type': 'scada_gateway_heartbeat', 'host': 'ot-scada-gateway', **metrics}
                     )
 
-                # 2. Database Primary Telemetry
+                # 2. Database Health & Connection Pool Metrics
                 if self._counter % 3 == 0:
                     with self.app.app_context():
                         try:
                             from app.models import db
-                            result = db.session.execute(db.text("SELECT count(*) FROM pg_stat_activity;")).scalar()
-                            active_conns = result or 4
+                            from sqlalchemy import text
+                            res = db.session.execute(text("SELECT count(*) FROM pg_stat_activity WHERE datname='siem_db'")).scalar()
+                            active_conns = res or 4
                         except Exception:
                             active_conns = 4
                             

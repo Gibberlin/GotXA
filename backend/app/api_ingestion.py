@@ -35,31 +35,41 @@ def _upsert_device(event, occurred_at):
         return None, False
     
     hostname = hostname.strip().lower()
+    inferred_type = details.get('device_type') or _infer_device_type(hostname)
+    occurred_at = occurred_at or datetime.utcnow()
+    
     device = db.session.query(Device).filter_by(hostname=hostname).first()
     is_new = False
     
     if device is None:
-        is_new = True
-        inferred_type = details.get('device_type') or _infer_device_type(hostname)
-        device = Device(
-            hostname=hostname,
-            device_type=inferred_type,
-            trust_state='untrusted',
-            first_seen_at=occurred_at,
-            last_seen_at=occurred_at
-        )
-        db.session.add(device)
+        try:
+            device = Device(
+                id=str(uuid.uuid4()),
+                hostname=hostname,
+                device_type=inferred_type,
+                trust_state='untrusted',
+                first_seen_at=occurred_at,
+                last_seen_at=occurred_at
+            )
+            db.session.add(device)
+            db.session.flush()
+            is_new = True
+        except Exception:
+            db.session.rollback()
+            device = db.session.query(Device).filter_by(hostname=hostname).first()
+            is_new = False
     
-    for field in ('ip_address', 'mac_address', 'device_type', 'manufacturer', 'model', 'os_version', 'serial_number'):
-        value = details.get(field)
-        if value is not None:
-            setattr(device, field, value)
-            
-    device.last_seen_at = occurred_at
-    device.metadata_json = details.get('metadata', device.metadata_json)
-    
-    # Update or register LogSource for metrics
-    _update_log_source(hostname, device.device_type, occurred_at)
+    if device:
+        for field in ('ip_address', 'mac_address', 'device_type', 'manufacturer', 'model', 'os_version', 'serial_number'):
+            value = details.get(field)
+            if value is not None:
+                setattr(device, field, value)
+                
+        device.last_seen_at = occurred_at
+        device.metadata_json = details.get('metadata', device.metadata_json)
+        
+        # Update or register LogSource for metrics
+        _update_log_source(hostname, device.device_type, occurred_at)
     
     return device, is_new
 
