@@ -512,6 +512,8 @@ def scada_control():
         from app.telemetry import register_connecting_host
         register_connecting_host(client_ip, user_agent=request.headers.get('User-Agent'), source_hint=f'scada-ot-{machine_id}')
         
+    target_val = body.get('target_temperature', body.get('target_psi', body.get('target_value', body.get('value', body.get('val', 100.0)))))
+    
     raw_data = {
         'source_host': f'ot-plc-{machine_id}',
         'dest_asset': f'PLC-{machine_id.upper()}',

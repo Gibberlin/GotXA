@@ -82,11 +82,14 @@ def _build_live_report_payload(report_type='executive', title=None):
     soar_db = db.session.query(PlaybookExecution).order_by(PlaybookExecution.created_at.desc()).limit(10).all()
     soar_list = []
     for s in soar_db:
+        params = getattr(s, 'inputs', None) or getattr(s, 'parameters', {}) or {}
+        outs = getattr(s, 'outputs', None) or {}
+        summary = getattr(s, 'result_summary', None) or outs.get('message') or outs.get('status') or 'Execution processed'
         soar_list.append({
             'playbook': s.playbook_id,
-            'target': (s.parameters or {}).get('target', 'ot-scada-gateway'),
+            'target': params.get('target', params.get('target_host', 'ot-scada-gateway')),
             'status': s.status,
-            'result': s.result_summary or 'Execution completed successfully',
+            'result': summary,
             'executed_at': s.created_at.strftime('%Y-%m-%d %H:%M:%S') if s.created_at else occurred_now
         })
     

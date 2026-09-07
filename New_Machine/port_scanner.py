@@ -12,14 +12,14 @@ from colorama import init, Fore, Style
 init(autoreset=True)
 
 TARGET_HOSTS = [
-    ("api-gateway", [80, 443, 8080]),
-    ("backend", [5000, 8000]),
-    ("siem-postgres", [5432]),
-    ("redis-cache", [6379]),
+    ("Frontend", [80, 443]),
+    ("SoC", [5000]),
+    ("Database", [5432]),
+    ("radisCache", [6379]),
     ("corp-portal-frontend", [80]),
     ("scada-frontend", [80]),
     ("siem-soar-frontend", [80]),
-    ("ot-scada-gateway", [5002, 502]),
+    ("ot-scada-gateway", [5002]),
     ("gotxa-log-collector", [5006])
 ]
 
