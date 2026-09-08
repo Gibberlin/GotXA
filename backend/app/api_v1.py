@@ -323,7 +323,9 @@ def list_alerts():
                 'raw_parsed': forensics['raw_parsed']
             })
 
-        return success_response(list_response(alert_items, total, page, page_size))
+        resp = list_response(alert_items, total, page, page_size)
+        resp['alerts'] = alert_items
+        return success_response(resp)
     except Exception as e:
         return error_response('InternalError', str(e), 500)
 
@@ -457,6 +459,7 @@ def list_incidents():
     except Exception as e:
         return error_response('InternalError', str(e), 500)
 
+@api.route('/incidents/<incident_id>', methods=['GET'])
 @authenticate
 def get_incident_detail(incident_id):
     """Get full incident details."""

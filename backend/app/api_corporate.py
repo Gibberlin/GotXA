@@ -653,3 +653,20 @@ def admin_overview():
         'access_review_count': 1,
     })
 
+
+@api.route('/users', methods=['GET'])
+def list_corporate_users():
+    """List corporate directory users for user directory / assignment UI."""
+    items = []
+    for username, data in CORP_DIRECTORY_USERS.items():
+        items.append({
+            'id': username,
+            'username': username,
+            'name': data.get('name', username),
+            'email': data.get('email', f"{username}@gotxa.local"),
+            'role': data.get('role', 'user'),
+            'department': data.get('department', 'Corporate Operations'),
+            'status': 'active'
+        })
+    return jsonify({'items': items, 'total': len(items)}), 200
+

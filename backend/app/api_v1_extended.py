@@ -22,6 +22,7 @@ api = Blueprint('api_extended', __name__, url_prefix='/api')
 # 1. INCIDENT SUMMARY ENDPOINTS
 # ============================================================================
 
+@api.route('/incidents/summary', methods=['GET'])
 @authenticate
 def get_incidents_summary():
     """Get aggregated incident metrics (tasks, overdue, post-incident actions)."""
@@ -119,6 +120,8 @@ def create_incident_task(incident_id):
 # 2. LOG SOURCE INGESTION METRICS
 # ============================================================================
 
+@api.route('/data-sources', methods=['GET'])
+@api.route('/data-sources/metrics', methods=['GET'])
 @authenticate
 def get_data_sources_metrics():
     """Get ingestion metrics for all log sources."""
@@ -177,6 +180,7 @@ def create_log_source():
 # 3. THREAT INTELLIGENCE FEEDS
 # ============================================================================
 
+@api.route('/threat-intelligence/feeds', methods=['GET'])
 @authenticate
 def list_threat_intelligence_feeds():
     """List all threat intelligence feeds with sync status."""
@@ -262,6 +266,7 @@ def sync_threat_intelligence_feed(feed_id):
 # 4. JIT (JUST-IN-TIME) ACCESS MANAGEMENT
 # ============================================================================
 
+@api.route('/access/jit-sessions', methods=['GET'])
 @authenticate
 def list_jit_sessions():
     """List active JIT privilege elevation sessions."""
@@ -294,6 +299,7 @@ def list_jit_sessions():
     except Exception as e:
         return error_response('InternalError', str(e), 500)
 
+@api.route('/access/jit-sessions', methods=['POST'])
 @authenticate
 def request_jit_session():
     """Request a JIT privilege elevation."""

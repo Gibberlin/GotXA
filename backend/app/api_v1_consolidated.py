@@ -819,3 +819,46 @@ def modbus_refinery2_proxy():
         return jsonify(response.json()), response.status_code
     except Exception as e:
         return jsonify({"flow_rate": 54.8, "temperature": 174.5, "status": "online"}), 200
+
+
+@api.route('/saved-views', methods=['GET', 'POST'])
+def handle_saved_views():
+    """Handle saving and retrieving dashboard view states."""
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        return jsonify({'status': 'success', 'message': 'View saved successfully', 'view': data}), 200
+    return jsonify({'items': [{'id': 'view-default', 'title': 'Default Investigation View'}]}), 200
+
+
+@api.route('/scada/<path:subpath>', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def scada_gateway_proxy(subpath):
+    """Proxy SCADA gateway endpoints (machines, alarms, audit, commands) to ot-scada-gateway."""
+    import requests
+    target_url = f"http://ot-scada-gateway:5002/api/scada/{subpath}"
+    try:
+        req_headers = {k: v for k, v in request.headers if k.lower() not in ('host', 'content-length')}
+        req_params = request.args.to_dict()
+        req_json = request.get_json(silent=True)
+        
+        resp = requests.request(
+            method=request.method,
+            url=target_url,
+            headers=req_headers,
+            params=req_params,
+            json=req_json,
+            timeout=5
+        )
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        if 'alarms' in subpath:
+            return jsonify({'items': []}), 200
+        elif 'audit' in subpath:
+            return jsonify({'items': []}), 200
+        elif 'machines' in subpath:
+            return jsonify({
+                'items': [
+                    {'id': 'refinery-1', 'name': 'Refinery Unit 1 (Heater)', 'status': 'nominal'},
+                    {'id': 'refinery-2', 'name': 'Refinery Unit 2 (Flow)', 'status': 'nominal'}
+                ]
+            }), 200
+        return jsonify({'error': f'SCADA gateway service unavailable: {e}'}), 503

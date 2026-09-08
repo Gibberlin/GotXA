@@ -22,6 +22,7 @@ audit = AuditLogger()
 # 2. ALERT ACTIONS
 # ============================================================================
 
+@api.route('/alerts/assign', methods=['POST'])
 @authenticate
 @require_permission('alerts.assign')
 def bulk_assign_alerts():
@@ -61,6 +62,7 @@ def bulk_assign_alerts():
         db.session.rollback()
         return error_response('InternalError', str(e), 500)
 
+@api.route('/alerts/<alert_id>/suppress', methods=['POST'])
 @authenticate
 @require_permission('alerts.suppress')
 def suppress_alert(alert_id):
@@ -135,6 +137,7 @@ def update_alert_status(alert_id):
 # 3. INCIDENT ACTIONS
 # ============================================================================
 
+@api.route('/incidents', methods=['POST'])
 @authenticate
 @require_permission('incidents.create')
 def create_incident():
@@ -537,8 +540,7 @@ def get_soar_history():
         total = query.count()
         items = query.offset((page - 1) * page_size).limit(page_size).all()
         
-        return success_response({
-            'items': [{
+        exec_list = [{
                 'execution_id': e.execution_id,
                 'playbook_id': e.playbook_id,
                 'status': e.status,
@@ -550,7 +552,11 @@ def get_soar_history():
                 'created_at': e.created_at.isoformat() if e.created_at else None,
                 'started_at': e.started_at.isoformat() if e.started_at else None,
                 'completed_at': e.completed_at.isoformat() if e.completed_at else None
-            } for e in items],
+            } for e in items]
+        
+        return success_response({
+            'items': exec_list,
+            'executions': exec_list,
             'total': total,
             'page': page,
             'page_size': page_size
