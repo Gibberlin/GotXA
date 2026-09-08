@@ -172,9 +172,10 @@ def get_raw_stream():
                 # Merge all normalized OT, SCADA, and Corp Portal fields
                 if isinstance(raw_data, dict):
                     for k, v in raw_data.items():
-                        if k not in ('id', 'message'):
+                        if k not in ('id', 'message', 'timestamp', 'time_display', 'formatted_time'):
                             item_dict[k] = v
 
+                item_dict['timestamp'] = format_timestamp(e.occurred_at or raw_data.get('timestamp') or e.received_at)
                 formatted.append(item_dict)
             return jsonify(formatted), 200
             
@@ -198,8 +199,9 @@ def get_raw_stream():
             }
             if isinstance(raw_a, dict):
                 for k, v in raw_a.items():
-                    if k not in ('id', 'message'):
+                    if k not in ('id', 'message', 'timestamp', 'time_display', 'formatted_time'):
                         alert_dict[k] = v
+            alert_dict['timestamp'] = format_timestamp(a.timestamp or raw_a.get('timestamp') or a.created_at)
             formatted_alerts.append(alert_dict)
         return jsonify(formatted_alerts), 200
     except Exception as e:

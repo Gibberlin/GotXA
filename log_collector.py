@@ -195,7 +195,7 @@ class ParallelLogCollector:
 
     def _parse_line(self, line, default_host, source_type):
         """Robust parser supporting JSON lines and structured log formats."""
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
         
         # 1. Try parsing JSON log format
         if line.startswith('{') and line.endswith('}'):

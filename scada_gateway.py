@@ -57,7 +57,7 @@ class SiemPublisher:
 
     def publish_event(self, event_type, host, message, level='info', device_meta=None, extra_meta=None):
         """Enqueue an event for asynchronous parallel transmission to SIEM."""
-        timestamp = datetime.utcnow().isoformat() + 'Z'
+        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
         event = {
             'timestamp': timestamp,
             'log_source': device_meta.get('log_source') or f"SCADA_HMI_{host}" if 'hmi' in str(host).lower() else f"OT_Sensor_{host}",

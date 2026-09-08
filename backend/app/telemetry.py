@@ -101,7 +101,8 @@ def record_telemetry_event(app, host, level, message, details=None):
 
             # Insert SecurityEvent with unified schema
             event_payload = {
-                'timestamp': occurred_at.isoformat() + 'Z',
+                'timestamp': occurred_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'time_display': occurred_at.strftime('%I:%M:%S %p'),
                 'log_source': (details or {}).get('log_source') or f"System_Daemon_{host.replace('-', '_')}",
                 'event_type': (details or {}).get('event_type') or 'System_Telemetry',
                 'severity': level.capitalize() if level else 'Info',
