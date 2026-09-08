@@ -12,14 +12,24 @@ function App() {
     <Router>
       <Routes>
         {/* Corporate Portal */}
+        <Route path="/corp" element={<CorpLogin />} />
+        <Route path="/corp/" element={<CorpLogin />} />
         <Route path="/corp_portal" element={<CorpLogin />} />
+        <Route path="/corp/dashboard" element={<CorpDashboard />} />
+        <Route path="/corp/dashboard/" element={<CorpDashboard />} />
         <Route path="/corp_portal/dashboard" element={<CorpDashboard />} />
 
         {/* SCADA Dashboards */}
+        <Route path="/scada" element={<SCADADashboard />} />
+        <Route path="/scada/" element={<SCADADashboard />} />
         <Route path="/scada_dashboard" element={<SCADADashboard />} />
+        <Route path="/scada/hmi" element={<SCADAHmi />} />
+        <Route path="/scada/hmi/" element={<SCADAHmi />} />
         <Route path="/scada_dashboard/hmi" element={<SCADAHmi />} />
 
         {/* SIEM Dashboard */}
+        <Route path="/siem" element={<SiemDashboard />} />
+        <Route path="/siem/" element={<SiemDashboard />} />
         <Route path="/siem_dashboard" element={<SiemDashboard />} />
 
         {/* Redirect root to SIEM dashboard */}
