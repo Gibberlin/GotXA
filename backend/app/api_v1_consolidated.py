@@ -19,6 +19,7 @@ from app.models import (
 from app.auth import (
     authenticate, require_permission, error_response, success_response
 )
+from app.api_v1 import format_timestamp, format_time_display, format_human_time
 
 api = Blueprint('api_consolidated', __name__, url_prefix='/api')
 
@@ -594,7 +595,7 @@ def get_settings_history():
         items = []
         for change in changes:
             items.append({
-                'timestamp': change.created_at.strftime('%H:%M'),
+                'timestamp': format_time_display(change.created_at) if change.created_at else None,
                 'user': change.changed_by.username if change.changed_by else 'System',
                 'section': change.section,
                 'action': f"Updated {change.key}",
@@ -774,7 +775,8 @@ def recent_activity():
         activities = []
         for e in events:
             activities.append({
-                "timestamp": e.occurred_at.strftime('%H:%M:%S') if e.occurred_at else datetime.utcnow().strftime('%H:%M:%S'),
+                "timestamp": format_time_display(e.occurred_at or e.received_at),
+                "formatted_time": format_human_time(e.occurred_at or e.received_at),
                 "description": f"[{e.source}] {e.message}",
                 "status": "warning" if e.severity in ('warn', 'warning') else ("danger" if e.severity in ('high', 'critical') else "success")
             })

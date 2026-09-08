@@ -4,7 +4,7 @@ GOTXA SIEM/SOAR REST API - Core Endpoints
 All 40+ endpoints implementing complete SOAR workflow
 """
 
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, has_request_context
 from datetime import datetime, timedelta
 from sqlalchemy import desc, and_, or_
 import uuid
@@ -22,26 +22,65 @@ from app.audit import AuditLogger
 
 api = Blueprint('api', __name__, url_prefix='/api')
 
-def format_timestamp(dt):
-    """Format datetime into clean readable timestamp without microsecond noise (YYYY-MM-DD HH:MM:SS)."""
-    if not dt:
-        return None
-    if isinstance(dt, str):
-        return dt.split('.')[0].replace('T', ' ').replace('Z', '') if '.' in dt else dt.replace('T', ' ').replace('Z', '')
-    return dt.strftime('%Y-%m-%d %H:%M:%S')
+import os
+from datetime import timezone
 
-def format_human_time(dt):
-    """Format datetime into standard human-friendly time display (e.g. 'Sep 08, 2026, 10:13:38 PM')."""
+def _get_tz_offset():
+    """Determine timezone offset in minutes. Defaults to +330 (+05:30 IST)."""
+    if has_request_context():
+        try:
+            header_val = request.headers.get('X-Timezone-Offset')
+            if header_val is not None:
+                return -int(header_val)
+        except Exception:
+            pass
+    try:
+        return int(os.getenv('SIEM_TZ_OFFSET_MINUTES', '330'))
+    except Exception:
+        return 330
+
+def _to_local(dt):
+    """Convert UTC datetime or string to local timezone."""
     if not dt:
         return None
     if isinstance(dt, str):
         try:
-            clean = dt.replace('Z', '+00:00')
-            parsed = datetime.fromisoformat(clean)
-            return parsed.strftime('%b %d, %Y, %I:%M:%S %p')
+            clean = dt.replace('Z', '+00:00').replace(' ', 'T')
+            dt = datetime.fromisoformat(clean)
         except Exception:
             return dt
-    return dt.strftime('%b %d, %Y, %I:%M:%S %p')
+    
+    offset_mins = _get_tz_offset()
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone(timedelta(minutes=offset_mins)))
+    return dt + timedelta(minutes=offset_mins)
+
+def format_timestamp(dt):
+    """Format datetime into clean readable local timestamp without microsecond noise (YYYY-MM-DD HH:MM:SS)."""
+    if not dt:
+        return None
+    local_dt = _to_local(dt)
+    if isinstance(local_dt, str):
+        return local_dt.split('.')[0].replace('T', ' ').replace('Z', '')
+    return local_dt.strftime('%Y-%m-%d %H:%M:%S')
+
+def format_human_time(dt):
+    """Format datetime into standard human-friendly local time display (e.g. 'Sep 09, 2026, 03:53:03 AM')."""
+    if not dt:
+        return None
+    local_dt = _to_local(dt)
+    if isinstance(local_dt, str):
+        return local_dt
+    return local_dt.strftime('%b %d, %Y, %I:%M:%S %p')
+
+def format_time_display(dt):
+    """Format datetime into local 12-hour clock (e.g. '03:53:03 AM')."""
+    if not dt:
+        return None
+    local_dt = _to_local(dt)
+    if isinstance(local_dt, str):
+        return local_dt
+    return local_dt.strftime('%I:%M:%S %p')
 
 
 # ============================================================================
@@ -95,7 +134,7 @@ def get_overview():
                 'source': a.source,
                 'detected_at': format_timestamp(a.detected_at or a.timestamp),
                 'formatted_time': format_human_time(a.detected_at or a.timestamp),
-                'time_display': (a.detected_at or a.timestamp).strftime('%I:%M:%S %p') if (a.detected_at or a.timestamp) else None
+                'time_display': format_time_display(a.detected_at or a.timestamp)
             } for a in recent_alerts],
             'source_health': source_health,
             'timestamp': format_timestamp(datetime.utcnow()),
@@ -159,7 +198,7 @@ def get_raw_stream():
                 item_dict = {
                     'id': e.id,
                     'timestamp': format_timestamp(e.occurred_at or e.received_at),
-                    'time_display': (e.occurred_at or e.received_at).strftime('%I:%M:%S %p') if (e.occurred_at or e.received_at) else datetime.utcnow().strftime('%I:%M:%S %p'),
+                    'time_display': format_time_display(e.occurred_at or e.received_at),
                     'formatted_time': format_human_time(e.occurred_at or e.received_at),
                     'log_source': raw_data.get('log_source') or e.source or 'system',
                     'event_type': raw_data.get('event_type') or cat,
@@ -175,7 +214,6 @@ def get_raw_stream():
                         if k not in ('id', 'message', 'timestamp', 'time_display', 'formatted_time'):
                             item_dict[k] = v
 
-                item_dict['timestamp'] = format_timestamp(e.occurred_at or raw_data.get('timestamp') or e.received_at)
                 formatted.append(item_dict)
             return jsonify(formatted), 200
             
@@ -187,7 +225,7 @@ def get_raw_stream():
             alert_dict = {
                 'id': a.id,
                 'timestamp': format_timestamp(a.timestamp or a.created_at),
-                'time_display': (a.timestamp or a.created_at).strftime('%I:%M:%S %p') if (a.timestamp or a.created_at) else datetime.utcnow().strftime('%I:%M:%S %p'),
+                'time_display': format_time_display(a.timestamp or a.created_at),
                 'formatted_time': format_human_time(a.timestamp or a.created_at),
                 'log_source': raw_a.get('log_source') or a.source or 'system',
                 'event_type': raw_a.get('event_type') or 'Alert_Event',
@@ -201,7 +239,6 @@ def get_raw_stream():
                 for k, v in raw_a.items():
                     if k not in ('id', 'message', 'timestamp', 'time_display', 'formatted_time'):
                         alert_dict[k] = v
-            alert_dict['timestamp'] = format_timestamp(a.timestamp or raw_a.get('timestamp') or a.created_at)
             formatted_alerts.append(alert_dict)
         return jsonify(formatted_alerts), 200
     except Exception as e:
@@ -337,7 +374,7 @@ def list_alerts():
                 'timestamp': format_timestamp(a.timestamp or a.created_at),
                 'created_at': format_timestamp(a.created_at),
                 'formatted_time': format_human_time(a.detected_at or a.timestamp or a.created_at),
-                'time_display': (a.detected_at or a.timestamp or a.created_at).strftime('%I:%M:%S %p') if (a.detected_at or a.timestamp or a.created_at) else None,
+                'time_display': format_time_display(a.detected_at or a.timestamp or a.created_at),
                 # Enriched forensic fields
                 'src_ip': forensics['src_ip'],
                 'attacker_ip': forensics['attacker_ip'],
@@ -394,7 +431,7 @@ def get_alert_detail(alert_id):
             'timestamp': format_timestamp(alert.timestamp or alert.created_at),
             'created_at': format_timestamp(alert.created_at),
             'formatted_time': format_human_time(alert.detected_at or alert.timestamp or alert.created_at),
-            'time_display': (alert.detected_at or alert.timestamp or alert.created_at).strftime('%I:%M:%S %p') if (alert.detected_at or alert.timestamp or alert.created_at) else None,
+            'time_display': format_time_display(alert.detected_at or alert.timestamp or alert.created_at),
             # Forensics
             'src_ip': forensics['src_ip'],
             'attacker_ip': forensics['attacker_ip'],

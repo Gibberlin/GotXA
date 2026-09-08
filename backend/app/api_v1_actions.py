@@ -540,6 +540,7 @@ def get_soar_history():
         total = query.count()
         items = query.offset((page - 1) * page_size).limit(page_size).all()
         
+        from app.api_v1 import format_timestamp, format_human_time, format_time_display
         exec_list = [{
                 'execution_id': e.execution_id,
                 'playbook_id': e.playbook_id,
@@ -549,11 +550,11 @@ def get_soar_history():
                 'inputs': e.inputs,
                 'outputs': e.outputs,
                 'triggered_by': e.triggered_by.username if e.triggered_by else 'system (auto-soar)',
-                'created_at': e.created_at.strftime('%Y-%m-%d %H:%M:%S') if e.created_at else None,
-                'started_at': e.started_at.strftime('%Y-%m-%d %H:%M:%S') if e.started_at else None,
-                'completed_at': e.completed_at.strftime('%Y-%m-%d %H:%M:%S') if e.completed_at else None,
-                'formatted_time': (e.completed_at or e.started_at or e.created_at).strftime('%b %d, %Y, %I:%M:%S %p') if (e.completed_at or e.started_at or e.created_at) else None,
-                'time_display': (e.completed_at or e.started_at or e.created_at).strftime('%I:%M:%S %p') if (e.completed_at or e.started_at or e.created_at) else None
+                'created_at': format_timestamp(e.created_at),
+                'started_at': format_timestamp(e.started_at),
+                'completed_at': format_timestamp(e.completed_at),
+                'formatted_time': format_human_time(e.completed_at or e.started_at or e.created_at),
+                'time_display': format_time_display(e.completed_at or e.started_at or e.created_at)
             } for e in items]
         
         return success_response({
