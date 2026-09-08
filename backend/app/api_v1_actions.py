@@ -549,9 +549,11 @@ def get_soar_history():
                 'inputs': e.inputs,
                 'outputs': e.outputs,
                 'triggered_by': e.triggered_by.username if e.triggered_by else 'system (auto-soar)',
-                'created_at': e.created_at.isoformat() if e.created_at else None,
-                'started_at': e.started_at.isoformat() if e.started_at else None,
-                'completed_at': e.completed_at.isoformat() if e.completed_at else None
+                'created_at': e.created_at.strftime('%Y-%m-%d %H:%M:%S') if e.created_at else None,
+                'started_at': e.started_at.strftime('%Y-%m-%d %H:%M:%S') if e.started_at else None,
+                'completed_at': e.completed_at.strftime('%Y-%m-%d %H:%M:%S') if e.completed_at else None,
+                'formatted_time': (e.completed_at or e.started_at or e.created_at).strftime('%b %d, %Y, %I:%M:%S %p') if (e.completed_at or e.started_at or e.created_at) else None,
+                'time_display': (e.completed_at or e.started_at or e.created_at).strftime('%I:%M:%S %p') if (e.completed_at or e.started_at or e.created_at) else None
             } for e in items]
         
         return success_response({

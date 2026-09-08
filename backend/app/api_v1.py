@@ -22,6 +22,28 @@ from app.audit import AuditLogger
 
 api = Blueprint('api', __name__, url_prefix='/api')
 
+def format_timestamp(dt):
+    """Format datetime into clean readable timestamp without microsecond noise (YYYY-MM-DD HH:MM:SS)."""
+    if not dt:
+        return None
+    if isinstance(dt, str):
+        return dt.split('.')[0].replace('T', ' ').replace('Z', '') if '.' in dt else dt.replace('T', ' ').replace('Z', '')
+    return dt.strftime('%Y-%m-%d %H:%M:%S')
+
+def format_human_time(dt):
+    """Format datetime into standard human-friendly time display (e.g. 'Sep 08, 2026, 10:13:38 PM')."""
+    if not dt:
+        return None
+    if isinstance(dt, str):
+        try:
+            clean = dt.replace('Z', '+00:00')
+            parsed = datetime.fromisoformat(clean)
+            return parsed.strftime('%b %d, %Y, %I:%M:%S %p')
+        except Exception:
+            return dt
+    return dt.strftime('%b %d, %Y, %I:%M:%S %p')
+
+
 # ============================================================================
 # 1. CORE READ APIs
 # ============================================================================
@@ -71,10 +93,13 @@ def get_overview():
                 'title': a.title,
                 'severity': a.severity,
                 'source': a.source,
-                'detected_at': a.detected_at.isoformat() if a.detected_at else None
+                'detected_at': format_timestamp(a.detected_at or a.timestamp),
+                'formatted_time': format_human_time(a.detected_at or a.timestamp),
+                'time_display': (a.detected_at or a.timestamp).strftime('%I:%M:%S %p') if (a.detected_at or a.timestamp) else None
             } for a in recent_alerts],
             'source_health': source_health,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': format_timestamp(datetime.utcnow()),
+            'formatted_time': format_human_time(datetime.utcnow())
         })
     except Exception as e:
         return error_response('InternalError', str(e), 500)
@@ -133,8 +158,9 @@ def get_raw_stream():
                 raw_data = e.raw_event if isinstance(e.raw_event, dict) else {}
                 item_dict = {
                     'id': e.id,
-                    'timestamp': e.occurred_at.isoformat() + 'Z' if e.occurred_at else (e.received_at.isoformat() + 'Z' if e.received_at else datetime.utcnow().isoformat() + 'Z'),
-                    'time_display': e.occurred_at.strftime('%I:%M:%S %p') if e.occurred_at else datetime.utcnow().strftime('%I:%M:%S %p'),
+                    'timestamp': format_timestamp(e.occurred_at or e.received_at),
+                    'time_display': (e.occurred_at or e.received_at).strftime('%I:%M:%S %p') if (e.occurred_at or e.received_at) else datetime.utcnow().strftime('%I:%M:%S %p'),
+                    'formatted_time': format_human_time(e.occurred_at or e.received_at),
                     'log_source': raw_data.get('log_source') or e.source or 'system',
                     'event_type': raw_data.get('event_type') or cat,
                     'severity': e.severity.capitalize() if e.severity else 'Info',
@@ -159,8 +185,9 @@ def get_raw_stream():
             raw_a = a.raw_event if isinstance(a.raw_event, dict) else {}
             alert_dict = {
                 'id': a.id,
-                'timestamp': a.timestamp.isoformat() + 'Z' if a.timestamp else datetime.utcnow().isoformat() + 'Z',
-                'time_display': a.timestamp.strftime('%I:%M:%S %p') if a.timestamp else datetime.utcnow().strftime('%I:%M:%S %p'),
+                'timestamp': format_timestamp(a.timestamp or a.created_at),
+                'time_display': (a.timestamp or a.created_at).strftime('%I:%M:%S %p') if (a.timestamp or a.created_at) else datetime.utcnow().strftime('%I:%M:%S %p'),
+                'formatted_time': format_human_time(a.timestamp or a.created_at),
                 'log_source': raw_a.get('log_source') or a.source or 'system',
                 'event_type': raw_a.get('event_type') or 'Alert_Event',
                 'severity': a.severity.capitalize() if a.severity else 'Info',
@@ -304,9 +331,11 @@ def list_alerts():
                 'raw_event': a.raw_event,
                 'assignee_id': a.assignee_id,
                 'assignee_name': a.assignee.username if a.assignee else None,
-                'detected_at': a.detected_at.isoformat() if a.detected_at else (a.timestamp.isoformat() if a.timestamp else None),
-                'timestamp': a.timestamp.isoformat() if a.timestamp else (a.created_at.isoformat() if a.created_at else None),
-                'created_at': a.created_at.isoformat() if a.created_at else None,
+                'detected_at': format_timestamp(a.detected_at or a.timestamp),
+                'timestamp': format_timestamp(a.timestamp or a.created_at),
+                'created_at': format_timestamp(a.created_at),
+                'formatted_time': format_human_time(a.detected_at or a.timestamp or a.created_at),
+                'time_display': (a.detected_at or a.timestamp or a.created_at).strftime('%I:%M:%S %p') if (a.detected_at or a.timestamp or a.created_at) else None,
                 # Enriched forensic fields
                 'src_ip': forensics['src_ip'],
                 'attacker_ip': forensics['attacker_ip'],
@@ -359,9 +388,11 @@ def get_alert_detail(alert_id):
             'raw_event': alert.raw_event,
             'assignee_id': alert.assignee_id,
             'assignee_name': alert.assignee.username if alert.assignee else None,
-            'detected_at': alert.detected_at.isoformat() if alert.detected_at else (alert.timestamp.isoformat() if alert.timestamp else None),
-            'timestamp': alert.timestamp.isoformat() if alert.timestamp else (alert.created_at.isoformat() if alert.created_at else None),
-            'created_at': alert.created_at.isoformat() if alert.created_at else None,
+            'detected_at': format_timestamp(alert.detected_at or alert.timestamp),
+            'timestamp': format_timestamp(alert.timestamp or alert.created_at),
+            'created_at': format_timestamp(alert.created_at),
+            'formatted_time': format_human_time(alert.detected_at or alert.timestamp or alert.created_at),
+            'time_display': (alert.detected_at or alert.timestamp or alert.created_at).strftime('%I:%M:%S %p') if (alert.detected_at or alert.timestamp or alert.created_at) else None,
             # Forensics
             'src_ip': forensics['src_ip'],
             'attacker_ip': forensics['attacker_ip'],
