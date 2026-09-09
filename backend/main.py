@@ -82,6 +82,10 @@ def create_app():
         logger.warning(f"Could not start SoarEngineDaemon: {e}")
     
     # Direct routes for verification frameworks and simulated attack pipelines
+    @app.route('/', methods=['GET'])
+    def root_portal():
+        return jsonify({'status': 'healthy', 'service': 'corp-portal-agent'}), 200
+
     @app.route('/logs/ingest', methods=['POST'])
     def root_logs_ingest():
         from app.api_ingestion import ingest_events

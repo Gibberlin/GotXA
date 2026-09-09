@@ -20,8 +20,9 @@ import time
 import requests
 import json
 
-SIEM_URL = "http://localhost:5000"
-PORTAL_URL = "http://localhost:5001"
+import os
+SIEM_URL = os.getenv("SIEM_URL", "http://localhost:5000")
+PORTAL_URL = os.getenv("PORTAL_URL", "http://localhost:5000")
 
 # ANSI Terminal Colors
 GREEN = "\033[92m"
@@ -69,8 +70,12 @@ def clear_alert_queue():
     try:
         import subprocess
         # Clear alert queue by setting status to Investigating
-        cmd = ["docker", "exec", "siem-postgres", "psql", "-U", "siem_user", "-d", "siem_db", "-c", "UPDATE alerts SET status = 'Investigating' WHERE status = 'Open';"]
-        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        cmd = ["docker", "exec", "Database", "psql", "-U", "siem_user", "-d", "siem_db", "-c", "UPDATE alerts SET status = 'Investigating' WHERE status = 'Open';"]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        except Exception:
+            cmd = ["docker", "exec", "siem-postgres", "psql", "-U", "siem_user", "-d", "siem_db", "-c", "UPDATE alerts SET status = 'Investigating' WHERE status = 'Open';"]
+            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
         print(f"  {GREEN}[+] Active queue cleared successfully ({res.stdout.strip()}){RESET}\n")
     except Exception as e:
         print(f"  {YELLOW}[!] Database maintenance query failed: {e}{RESET}")

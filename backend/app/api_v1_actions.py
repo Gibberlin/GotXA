@@ -4,7 +4,7 @@ GOTXA SIEM/SOAR REST API - Action Endpoints
 SOAR playbook execution, incident lifecycle, settings management
 """
 
-from flask import Blueprint, request, g
+from flask import Blueprint, request, g, jsonify
 from datetime import datetime
 from sqlalchemy import desc
 import uuid
