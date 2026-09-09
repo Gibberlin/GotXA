@@ -100,8 +100,11 @@
 git clone https://github.com/Gibberlin/GotXA.git
 cd GotXA
 
-# Build and launch all multi-tier microservices
+# Build and launch the core multi-tier stack
 docker compose up -d --build
+
+# Enable the optional log collector and SCADA gateway
+docker compose --profile production-logging --profile scada up -d --build
 ```
 
 ### 3. Access Web Dashboards
