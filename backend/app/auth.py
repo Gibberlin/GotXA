@@ -252,14 +252,20 @@ def error_response(code, message, status_code=400, details=None):
 
 def success_response(data=None, message='Success', status_code=200):
     """Format a standard success response."""
-    if isinstance(data, dict) and 'items' in data:
-        return jsonify(data), status_code
-    
-    return jsonify({
+    res = {
         'data': data,
         'message': message,
         'timestamp': datetime.utcnow().isoformat()
-    }), status_code
+    }
+    if isinstance(data, dict):
+        for k, v in data.items():
+            if k not in res:
+                res[k] = v
+    elif isinstance(data, list):
+        res['items'] = data
+        res['total'] = len(data)
+    
+    return jsonify(res), status_code
 
 def list_response(items, total, page=1, page_size=25):
     """Format a paginated list response."""
