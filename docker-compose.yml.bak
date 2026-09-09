@@ -18,14 +18,6 @@ services:
     expose:
       - "6379"
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
 
   # ============================================================================
   # DATABASES
@@ -55,14 +47,6 @@ services:
       - "-c"
       - "shared_buffers=256MB"
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
-        reservations:
-          cpus: '1'
-          memory: 1G
 
   # ============================================================================
   # BACKEND API SERVER
@@ -92,7 +76,7 @@ services:
     networks:
       - gotxa-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5)"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -103,14 +87,6 @@ services:
       - ./backend:/app
       - reports-data:/app/reports
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 1.5G
-        reservations:
-          cpus: '1'
-          memory: 1G
   
   # ============================================================================
   # CELERY WORKER (Background Tasks & Report Generation)
@@ -142,14 +118,49 @@ services:
       - ./backend:/app
       - reports-data:/app/reports
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '1.5'
-          memory: 1G
-        reservations:
-          cpus: '0.75'
-          memory: 512M
+
+  log-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile.collector
+    container_name: gotxa-log-collector
+    profiles: ["production-logging"]
+    environment:
+      TZ: ${TZ:-Asia/Kolkata}
+      SIEM_INGRESS_URL: http://backend:5000/api/ingest/events
+      COLLECTOR_INGEST_TOKEN: ${COLLECTOR_INGEST_TOKEN:-}
+      COLLECTOR_PORT: "5006"
+    volumes:
+      - ./logs:/logs:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - gotxa-net
+    expose:
+      - "5006"
+    restart: unless-stopped
+
+  scada-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.scada
+    container_name: ot-scada-gateway
+    profiles: ["scada"]
+    environment:
+      TZ: ${TZ:-Asia/Kolkata}
+      SIEM_INGRESS_URL: http://backend:5000/api/ingest/events
+      COLLECTOR_INGEST_TOKEN: ${COLLECTOR_INGEST_TOKEN:-}
+      PLC_REFINERY_1_HOST: ${PLC_REFINERY_1_HOST:-ot-plc-refinery-1}
+      PLC_REFINERY_2_HOST: ${PLC_REFINERY_2_HOST:-ot-plc-refinery-2}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - gotxa-net
+    expose:
+      - "5002"
+    restart: unless-stopped
 
   # ============================================================================
   # FRONTEND WEB SERVERS
@@ -175,14 +186,6 @@ services:
     restart: unless-stopped
     expose:
       - "80"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.75'
-          memory: 512M
-        reservations:
-          cpus: '0.5'
-          memory: 256M
 
   corp-portal-frontend:
     build:
@@ -204,14 +207,6 @@ services:
     restart: unless-stopped
     expose:
       - "80"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.75'
-          memory: 512M
-        reservations:
-          cpus: '0.5'
-          memory: 256M
 
   scada-frontend:
     build:
@@ -233,14 +228,7 @@ services:
     restart: unless-stopped
     expose:
       - "80"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.75'
-          memory: 512M
-        reservations:
-          cpus: '0.5'
-          memory: 256M
+
 
   # ============================================================================
   # API GATEWAY / REVERSE PROXY
@@ -270,14 +258,24 @@ services:
     environment:
       - TZ=UTC
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
-        reservations:
-          cpus: '0.5'
-          memory: 256M
+
+  # ============================================================================
+  # PENTESTING & ADVERSARY SIMULATION NODE
+  # ============================================================================
+  
+  new-machine:
+    build:
+      context: ./New_Machine
+      dockerfile: Dockerfile
+    container_name: New_Machine
+    networks:
+      - gotxa-net
+    volumes:
+      - ./New_Machine:/workspace
+    depends_on:
+      - backend
+      - api-gateway
+    restart: unless-stopped
 
 # ============================================================================
 # VOLUMES

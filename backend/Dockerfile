@@ -24,5 +24,19 @@ USER appuser
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:5000/health')" || exit 1
 
-# Run with gunicorn
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "wsgi:app"]
+# Run with gunicorn (optimized for heavy load)
+# Workers: 2 per CPU core + 1
+# Threads: for async handling
+# Timeout: 120s for long-running tasks
+# Max requests: recycle workers periodically to prevent memory leaks
+CMD ["gunicorn", \
+     "-w", "4", \
+     "-b", "0.0.0.0:5000", \
+     "--worker-class", "sync", \
+     "--worker-tmp-dir", "/dev/shm", \
+     "--timeout", "120", \
+     "--max-requests", "1000", \
+     "--max-requests-jitter", "100", \
+     "--keep-alive", "65", \
+     "--log-level", "info", \
+     "wsgi:app"]
