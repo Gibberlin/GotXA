@@ -65,15 +65,17 @@ When testing REST endpoints, pass the **`X-User-ID`** header to establish role i
 
 ```
 GotXA/
+├── Additional Doc/     # Strategic planning, SaaS pricing guide, and multi-tenant technical implementation
 ├── backend/            # Flask REST API, PostgreSQL ORM models, Celery tasks, PDF engine
 ├── doc/                # Complete technical architecture, API specs, and runbooks
+├── For Avirup/         # Specialized guides (MITRE mapping, compliance, incident runbooks, glossary)
 ├── frontend/           # React SPAs (SIEM SOC Dashboard, Corp Portal, SCADA HMI)
-├── pentesting_scripts/ # Attack automation (SQLi, RCE, Brute force)
+├── New_Machine/        # Adversary simulation node and attack automation (SQLi, RCE, Brute force)
 ├── webservers/         # Nginx reverse proxy configs for API Gateway and frontends
 ├── log_collector.py    # Parallel multi-threaded real log collector
 ├── modbus_plc_server.py# Instrumented Modbus TCP PLC industrial simulation
 ├── scada_gateway.py    # Async Modbus poller & parallel SIEM publisher
-└── vulnerable_app.py   # Vulnerable corporate portal agent
+└── test_soar.py        # Threat testing and automated SOAR verification framework
 ```
 
 ---

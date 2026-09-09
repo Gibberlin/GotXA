@@ -154,17 +154,18 @@ docker exec -it New_Machine python3 port_scanner.py       # Internal network rec
 
 ## 📚 Documentation Hub
 
-Exhaustive architectural reports, API references, runbooks, and implementation guides are located in the **[`doc/`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc)** and **[`For Avirup/`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/For%20Avirup)** directories:
+Exhaustive architectural reports, API references, runbooks, and implementation guides are located in the **[`doc/`](doc)**, **[`For Avirup/`](For%20Avirup)**, and **[`Additional Doc/`](Additional%20Doc)** directories:
 
 | Document | Purpose |
 | :--- | :--- |
-| **[`doc/IMPORTANT_FACTS.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/IMPORTANT_FACTS.md)** | **Start Here.** Cheat sheet covering ports, credentials, environment variables, and directories. |
-| **[`doc/ARCHITECTURE.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/ARCHITECTURE.md)** | In-depth technical architecture, network zones, correlation engine, and ORM models. |
-| **[`doc/API_SPECIFICATION.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/API_SPECIFICATION.md)** | Exhaustive REST API specification for all endpoints with request/response schemas. |
-| **[`doc/TESTING_AND_INTEGRATION.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/doc/TESTING_AND_INTEGRATION.md)** | Testing guides, test runners, and React frontend integration standards. |
-| **[`For Avirup/CONTAINERS_OVERVIEW.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/For%20Avirup/CONTAINERS_OVERVIEW.md)** | Comprehensive Docker container topology, internal networks, and dependencies. |
-| **[`For Avirup/PENTESTING_GUIDE.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/For%20Avirup/PENTESTING_GUIDE.md)** | Complete guide to running red team attacks with `New_Machine`. |
-| **[`For Avirup/MITRE_MAPPING.md`](file:///c:/Users/RJDhu/OneDrive/Desktop/Project/GotXA/For%20Avirup/MITRE_MAPPING.md)** | MITRE ATT&CK for Enterprise and ICS matrix coverage. |
+| **[`doc/IMPORTANT_FACTS.md`](doc/IMPORTANT_FACTS.md)** | **Start Here.** Cheat sheet covering ports, credentials, environment variables, and directories. |
+| **[`doc/ARCHITECTURE.md`](doc/ARCHITECTURE.md)** | In-depth technical architecture, network zones, correlation engine, and ORM models. |
+| **[`doc/API_SPECIFICATION.md`](doc/API_SPECIFICATION.md)** | Exhaustive REST API specification for all endpoints with request/response schemas. |
+| **[`doc/TESTING_AND_INTEGRATION.md`](doc/TESTING_AND_INTEGRATION.md)** | Testing guides, test runners, and React frontend integration standards. |
+| **[`For Avirup/CONTAINERS_OVERVIEW.md`](For%20Avirup/CONTAINERS_OVERVIEW.md)** | Comprehensive Docker container topology, internal networks, and dependencies. |
+| **[`For Avirup/PENTESTING_GUIDE.md`](For%20Avirup/PENTESTING_GUIDE.md)** | Complete guide to running red team attacks with `New_Machine`. |
+| **[`For Avirup/MITRE_MAPPING.md`](For%20Avirup/MITRE_MAPPING.md)** | MITRE ATT&CK for Enterprise and ICS matrix coverage. |
+| **[`Additional Doc/`](Additional%20Doc/)** | SaaS transition roadmap, commercial pricing calculators, and technical multi-tenancy implementation. |
 
 ---
 
@@ -181,3 +182,16 @@ Exhaustive architectural reports, API references, runbooks, and implementation g
 ## 📄 License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🔗 Additional Resources
+
+Strategic planning, commercial SaaS transition, technical multi-tenancy architecture, and ROI models for the GotXA platform are located in the **[`Additional Doc/`](Additional%20Doc/)** directory:
+
+| Resource Document | Description |
+| :--- | :--- |
+| **[`Additional Doc/GotXA_SaaS_Strategy.md`](Additional%20Doc/GotXA_SaaS_Strategy.md)** | **GotXA SIEM/SOAR — SaaS Conversion Strategy**<br>Comprehensive multi-tenant commercialization strategy, enterprise positioning vs. Splunk & Microsoft Sentinel, ICP definitions, competitive advantages (lower TCO, built-in SOAR, SCADA integration), and phased commercial roadmap. |
+| **[`Additional Doc/GotXA_SaaS_Pricing_Guide.md`](Additional%20Doc/GotXA_SaaS_Pricing_Guide.md)** | **GotXA SaaS — Pricing Calculator & ROI Estimator**<br>Tiered pricing calculator (Starter, Professional, Enterprise), usage-based log overages, retention add-ons, ROI estimation matrix, and customer sales conversation templates. |
+| **[`Additional Doc/GotXA_SaaS_Technical_Implementation.md`](Additional%20Doc/GotXA_SaaS_Technical_Implementation.md)** | **GotXA SaaS — Technical Implementation Checklist**<br>Technical architecture checklist covering tenant isolation middleware, per-tenant database routing, metering, billing webhooks, and compliance controls. |
+| **[`Additional Doc/README.md`](Additional%20Doc/README.md)** | Directory index and overview of all supplementary SaaS resources. |

@@ -138,6 +138,7 @@ Synthetic generators `agent.py` and `log_generator.sh` were removed. The collect
 | `app/`, `siem_server.py`, `nginx.conf`, `Dockerfile.siem`, `Dockerfile.frontend` | Earlier standalone SIEM implementation retained for reference; not loaded by the Compose backend. |
 | `filebeat.yml`, `logstash.conf` | Earlier Filebeat/Logstash pipeline configuration; current production collector uses the authenticated HTTP ingestion API. |
 | `doc/` | Comprehensive platform documentation: `API_SPECIFICATION.md`, `ARCHITECTURE.md`, `CODE_SNIPPETS.md`, `IMPORTANT_FACTS.md`, `TESTING_AND_INTEGRATION.md`, `vision_corp.md`, `vision_scada.md`, `SYSTEM_REFERENCE.md`. |
+| `Additional Doc/` | SaaS commercialization and transition resources: `GotXA_SaaS_Strategy.md`, `GotXA_SaaS_Pricing_Guide.md`, `GotXA_SaaS_Technical_Implementation.md`. |
 | `frontend/` | React/Vite development source for dashboards and corporate/SCADA pages. |
 | `test_endpoints.sh`, `test_soar.py`, `test_service_logs.py` | Integration and training test scripts. |
 

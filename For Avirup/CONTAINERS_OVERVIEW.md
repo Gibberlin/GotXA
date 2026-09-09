@@ -94,3 +94,8 @@ GotXA is designed to be modular. We plan to expand the platform in the following
 *   **Upgrade**: Run a lightweight Python background service using Scikit-Learn or PyTorch to monitor Modbus registers.
 *   **Outcome**: Automatically alerts on slow, subtle temperature/pressure anomalies that slip past standard static threshold rules (detecting slow-leak attacks).
 
+### E. Multi-Tenant SaaS Transition
+*   **Upgrade**: Implement tenant isolation layers, per-tenant database schemas/routing, usage metering, subscription enforcement, and billing webhooks.
+*   **Outcome**: Enables GotXA to scale into a commercial multi-tenant cloud SIEM/SOAR platform.
+*   **Reference**: Full commercial strategy, pricing calculations, and technical checklist are documented in [`Additional Doc/`](../Additional%20Doc/).
+
