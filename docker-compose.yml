@@ -82,6 +82,7 @@ services:
       LOG_LEVEL: INFO
       REPORTS_DIR: /app/reports
       COLLECTOR_INGEST_TOKEN: ${COLLECTOR_INGEST_TOKEN:-}
+      SOAR_REAL_MODE: ${SOAR_REAL_MODE:-true}
     depends_on:
       siem-postgres:
         condition: service_healthy
@@ -89,6 +90,8 @@ services:
         condition: service_healthy
     networks:
       - gotxa-net
+    cap_add:
+      - NET_ADMIN
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 15s

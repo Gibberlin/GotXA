@@ -5,7 +5,13 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     postgresql-client \
+    iptables \
+    libcap2-bin \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Allow the non-root application user to manage only network firewall rules.
+RUN setcap cap_net_admin+ep "$(readlink -f /usr/sbin/iptables)"
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .

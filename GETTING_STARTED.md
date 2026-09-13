@@ -129,8 +129,13 @@ The Compose file currently supplies these internal defaults:
 | Redis internal host | `redis` | Celery broker and result backend |
 | Backend port | `5000` | Flask API |
 | Reports directory | `/app/reports` | Generated report storage |
+| SOAR enforcement | `true` in Compose | Applies IP-block rules inside the backend container |
 
 For an internet-facing deployment, replace the demo database password and review the application authentication and secret handling before exposing port 80 or 443.
+
+### SOAR enforcement scope
+
+With `SOAR_REAL_MODE=true`, the `containment.block_ip` playbook installs an `iptables` DROP rule in the backend container. This blocks direct connections from an attacker such as `New_Machine` to the backend. It does not automatically block an attacker whose traffic is proxied through `api-gateway`, because the backend then sees the gateway container as the network source. Set `SOAR_REAL_MODE=false` for dry-run demonstrations.
 
 ## 6. Start the Core Stack
 

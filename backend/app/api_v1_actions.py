@@ -7,6 +7,9 @@ SOAR playbook execution, incident lifecycle, settings management
 from flask import Blueprint, request, g, jsonify
 from datetime import datetime
 from sqlalchemy import desc
+import ipaddress
+import os
+import subprocess
 import uuid
 
 from app.models import (
@@ -17,6 +20,41 @@ from app.audit import AuditLogger
 
 api = Blueprint('api_actions', __name__, url_prefix='/api')
 audit = AuditLogger()
+
+
+def _enforce_ip_block(target_ip):
+    """Apply an idempotent INPUT drop rule when real enforcement is enabled."""
+    try:
+        parsed_ip = ipaddress.ip_address(str(target_ip))
+    except ValueError:
+        return False, f'Invalid target IP: {target_ip}'
+
+    if parsed_ip.is_loopback or parsed_ip.is_unspecified or parsed_ip.is_multicast:
+        return False, f'Refusing to block unsafe target IP: {target_ip}'
+
+    real_mode = os.getenv('SOAR_REAL_MODE', 'false').strip().lower() in {'1', 'true', 'yes', 'on'}
+    command = ['iptables', '-s', str(parsed_ip), '-j', 'DROP']
+    if not real_mode:
+        return True, f'[SIMULATED] iptables -A INPUT -s {parsed_ip} -j DROP'
+
+    try:
+        exists = subprocess.run(
+            ['iptables', '-C', 'INPUT', *command[1:]],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if exists.returncode != 0:
+            subprocess.run(
+                ['iptables', '-A', 'INPUT', *command[1:]],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        return True, f'[REAL] iptables INPUT DROP installed for {parsed_ip}'
+    except (OSError, subprocess.CalledProcessError) as error:
+        detail = getattr(error, 'stderr', '') or str(error)
+        return False, f'Unable to install firewall rule for {parsed_ip}: {detail.strip()}'
 
 # ============================================================================
 # 2. ALERT ACTIONS
@@ -420,12 +458,20 @@ def run_playbook_logic(playbook_id, inputs=None, execution=None):
             'summary': f'Successfully isolated {target_host} ({target_ip}) from core industrial & corporate network.'
         })
     elif playbook_id in ('containment.block_ip', 'brute_force.ip_quarantine'):
+        block_succeeded, block_detail = _enforce_ip_block(target_ip)
         outputs.update({
             'action_taken': 'dynamic_ip_blacklist',
             'target_ip': target_ip,
             'blacklist_duration': '24h',
             'rule_id': f'FW-RULE-DROP-{target_ip.replace(".", "-")}',
-            'summary': f'Adversary IP {target_ip} dynamically blacklisted on border WAF and internal reverse proxy.'
+            'status': 'success' if block_succeeded else 'failed',
+            'enforcement': 'real' if os.getenv('SOAR_REAL_MODE', 'false').strip().lower() in {'1', 'true', 'yes', 'on'} else 'simulated',
+            'firewall_detail': block_detail,
+            'summary': (
+                f'Adversary IP {target_ip} dynamically blacklisted.'
+                if block_succeeded else
+                f'Adversary IP {target_ip} was not blocked: {block_detail}'
+            )
         })
     elif playbook_id in ('scada.emergency_containment', 'ot.emergency_shutdown'):
         outputs.update({

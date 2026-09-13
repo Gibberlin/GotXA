@@ -54,7 +54,7 @@ When testing REST endpoints, pass the **`X-User-ID`** header to establish role i
 | `CELERY_BROKER_URL` | `redis://redis:6379/0` | Redis broker URI for Celery. |
 | `CELERY_RESULT_BACKEND` | `redis://redis:6379/0` | Redis backend URI for Celery results. |
 | `COLLECTOR_INGEST_TOKEN` | *High entropy secret* | Auth token for `/api/ingest/events`. |
-| `SOAR_REAL_MODE` | `false` | `false` runs dry-run playbooks; `true` executes real `iptables`/`docker` containment. |
+| `SOAR_REAL_MODE` | `true` in Compose | `false` records simulated playbooks; `true` applies real backend-container `iptables` IP blocks. Requires the backend `NET_ADMIN` capability. |
 | `REPORTS_DIR` | `/app/reports` | Directory where Celery writes PDF reports. |
 | `SIEM_INGRESS_URL` | `http://backend:5000/api/ingest/events` | Ingestion target for collector and SCADA gateway. |
 | `LOGS_BASE_DIR` | `/logs` | Base directory scanned for machine log discovery. |
