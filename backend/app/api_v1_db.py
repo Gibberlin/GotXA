@@ -1,18 +1,55 @@
 #!/usr/bin/env python3
 """
 GOTXA SIEM/SOAR REST API - Database CRUD Endpoints
-Provides generic database listing, schema inspection, CRUD operations, and raw SQL queries.
+Provides restricted database listing, schema inspection, and parameterized CRUD operations.
 """
 
 from flask import Blueprint, request, jsonify, g
 from datetime import datetime
 from sqlalchemy import text
+import re
 import uuid
 
 from app.models import db
 from app.auth import authenticate, error_response, success_response, list_response
 
 api = Blueprint('db_api', __name__, url_prefix='/api/db')
+IDENTIFIER_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+
+def _validate_identifier(value, label):
+    """Allow only simple PostgreSQL identifiers before SQL interpolation."""
+    if not isinstance(value, str) or not IDENTIFIER_PATTERN.fullmatch(value):
+        raise ValueError(f'Invalid {label}')
+    return value
+
+
+def _public_table_columns(table_name):
+    """Return columns for a validated public table name."""
+    table_name = _validate_identifier(table_name, 'table name')
+    result = db.session.execute(text("""
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = :table_name
+        ORDER BY ordinal_position
+    """), {'table_name': table_name})
+    columns = {row[0] for row in result}
+    if not columns:
+        raise LookupError(f'Table {table_name} not found')
+    return columns
+
+
+def _validated_columns(values, allowed_columns):
+    """Validate dynamic column names and return them in request order."""
+    if not isinstance(values, dict) or not values:
+        raise ValueError('At least one column is required')
+    columns = []
+    for column in values:
+        column = _validate_identifier(column, 'column name')
+        if column not in allowed_columns:
+            raise ValueError(f'Unknown column: {column}')
+        columns.append(column)
+    return columns
 
 @api.route('/tables', methods=['GET'])
 @authenticate
@@ -31,6 +68,7 @@ def list_tables():
         
         tables_data = []
         for table in tables:
+            table = _validate_identifier(table, 'table name')
             count_query = text(f'SELECT COUNT(*) FROM "{table}"')
             count_res = db.session.execute(count_query)
             row_count = count_res.scalar()
@@ -49,6 +87,7 @@ def list_tables():
 def get_table_details(table_name):
     """Returns columns schema and paginated rows for a table."""
     try:
+        table_name = _validate_identifier(table_name, 'table name')
         # Validate table exists to prevent SQL injection
         check_query = text("""
             SELECT EXISTS (
@@ -94,8 +133,8 @@ def get_table_details(table_name):
             })
             
         # Get paginated data
-        page = int(request.args.get('page', 1))
-        page_size = int(request.args.get('page_size', 20))
+        page = max(int(request.args.get('page', 1)), 1)
+        page_size = min(max(int(request.args.get('page_size', 20)), 1), 100)
         offset = (page - 1) * page_size
         
         # Get total row count
@@ -143,6 +182,7 @@ def get_table_details(table_name):
 def insert_row(table_name):
     """Inserts a new row into the table."""
     try:
+        table_name = _validate_identifier(table_name, 'table name')
         data = request.json
         if not data:
             return error_response('BadRequest', 'No data provided', 400)
@@ -159,11 +199,14 @@ def insert_row(table_name):
         if not exists:
             return error_response('NotFound', f'Table {table_name} not found', 404)
             
-        columns_str = ", ".join([f'"{k}"' for k in data.keys()])
-        placeholders_str = ", ".join([f":{k}" for k in data.keys()])
+        allowed_columns = _public_table_columns(table_name)
+        columns = _validated_columns(data, allowed_columns)
+        columns_str = ", ".join([f'"{column}"' for column in columns])
+        placeholders_str = ", ".join([f":value_{index}" for index in range(len(columns))])
+        params = {f'value_{index}': data[column] for index, column in enumerate(columns)}
         
         insert_query = text(f'INSERT INTO "{table_name}" ({columns_str}) VALUES ({placeholders_str})')
-        db.session.execute(insert_query, data)
+        db.session.execute(insert_query, params)
         db.session.commit()
         
         return success_response(message=f'Row successfully inserted into {table_name}')
@@ -176,6 +219,7 @@ def insert_row(table_name):
 def update_row(table_name):
     """Updates an existing row matching primary key filters."""
     try:
+        table_name = _validate_identifier(table_name, 'table name')
         body = request.json
         if not body:
             return error_response('BadRequest', 'No body provided', 400)
@@ -198,14 +242,17 @@ def update_row(table_name):
         if not exists:
             return error_response('NotFound', f'Table {table_name} not found', 404)
             
-        set_clauses = ", ".join([f'"{k}" = :data_{k}' for k in data.keys()])
-        where_clauses = " AND ".join([f'"{k}" = :pk_{k}' for k in pk.keys()])
+        allowed_columns = _public_table_columns(table_name)
+        data_columns = _validated_columns(data, allowed_columns)
+        pk_columns = _validated_columns(pk, allowed_columns)
+        set_clauses = ", ".join([f'"{column}" = :data_{index}' for index, column in enumerate(data_columns)])
+        where_clauses = " AND ".join([f'"{column}" = :pk_{index}' for index, column in enumerate(pk_columns)])
         
         params = {}
-        for k, v in data.items():
-            params[f'data_{k}'] = v
-        for k, v in pk.items():
-            params[f'pk_{k}'] = v
+        for index, column in enumerate(data_columns):
+            params[f'data_{index}'] = data[column]
+        for index, column in enumerate(pk_columns):
+            params[f'pk_{index}'] = pk[column]
             
         update_query = text(f'UPDATE "{table_name}" SET {set_clauses} WHERE {where_clauses}')
         result = db.session.execute(update_query, params)
@@ -221,6 +268,7 @@ def update_row(table_name):
 def delete_row(table_name):
     """Deletes an existing row matching primary key filters."""
     try:
+        table_name = _validate_identifier(table_name, 'table name')
         body = request.json
         if not body:
             return error_response('BadRequest', 'No body provided', 400)
@@ -241,8 +289,10 @@ def delete_row(table_name):
         if not exists:
             return error_response('NotFound', f'Table {table_name} not found', 404)
             
-        where_clauses = " AND ".join([f'"{k}" = :pk_{k}' for k in pk.keys()])
-        params = {f'pk_{k}': v for k, v in pk.items()}
+        allowed_columns = _public_table_columns(table_name)
+        pk_columns = _validated_columns(pk, allowed_columns)
+        where_clauses = " AND ".join([f'"{column}" = :pk_{index}' for index, column in enumerate(pk_columns)])
+        params = {f'pk_{index}': pk[column] for index, column in enumerate(pk_columns)}
         
         delete_query = text(f'DELETE FROM "{table_name}" WHERE {where_clauses}')
         result = db.session.execute(delete_query, params)
@@ -256,48 +306,9 @@ def delete_row(table_name):
 @api.route('/query', methods=['POST'])
 @authenticate
 def execute_custom_query():
-    """Executes a custom raw SQL query."""
-    try:
-        body = request.json
-        query_str = body.get('query')
-        params = body.get('params', {})
-        
-        if not query_str:
-            return error_response('BadRequest', 'No query provided', 400)
-            
-        result = db.session.execute(text(query_str), params)
-        
-        if result.returns_rows:
-            columns = list(result.keys())
-            rows = []
-            for row in result:
-                try:
-                    row_dict = dict(row._mapping)
-                except AttributeError:
-                    row_dict = dict(zip(row.keys(), row))
-                    
-                for k, v in row_dict.items():
-                    if isinstance(v, datetime):
-                        row_dict[k] = v.isoformat()
-                    elif hasattr(v, 'hex'):  # UUID
-                        row_dict[k] = str(v)
-                    elif isinstance(v, (dict, list)):
-                        # Already dict or list, fine
-                        pass
-                rows.append(row_dict)
-                
-            db.session.commit()
-            return success_response({
-                'columns': columns,
-                'rows': rows,
-                'returns_rows': True
-            })
-        else:
-            db.session.commit()
-            return success_response({
-                'rowcount': result.rowcount,
-                'returns_rows': False
-            })
-    except Exception as e:
-        db.session.rollback()
-        return error_response('SQLError', str(e), 400)
+    """Reject arbitrary SQL; use purpose-built typed endpoints instead."""
+    return error_response(
+        'Disabled',
+        'Arbitrary SQL execution is disabled. Use a typed API endpoint.',
+        410
+    )

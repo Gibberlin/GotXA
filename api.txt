@@ -1,0 +1,842 @@
+GOTXA FRONTEND API INTEGRATION CONTRACT
+========================================
+
+Purpose
+-------
+This file is the frontend team's API handoff for GotXA. It lists the APIs exposed by the backend, Corporate Portal, SCADA gateway, and log collector; explains what each endpoint does; and identifies demo/fallback behavior that must be removed from frontend code.
+
+The API gateway is the normal browser entry point:
+
+  http://localhost/
+
+The gateway routes requests to the backend and frontend services. In production, replace localhost with the deployment hostname.
+
+IMPORTANT IMPLEMENTATION RULES
+------------------------------
+1. Use live API responses as the source of truth. Do not keep hardcoded dashboard metrics, alerts, incidents, machines, alarms, tasks, users, or activity arrays in the frontend.
+2. Do not treat HTTP 200 as proof that data is live. Some current backend routes return demo fallback data when a dependency is unavailable. The frontend should display a degraded/offline state when a response contains fallback data or when a service returns an error.
+3. Preserve IDs exactly as returned by the API. Alert database IDs and public alert_id values are different; use the `id` field for update/detail routes unless the endpoint specifically asks for alert_id.
+4. Send JSON with `Content-Type: application/json` for JSON requests.
+5. Store the returned access token in memory or a secure application session mechanism and send it as `Authorization: Bearer <access_token>` on authenticated requests.
+6. The backend also accepts `X-User-ID`, but that is a development/demo fallback. Do not use it as production authentication.
+7. Use the gateway paths in browser code. Direct service URLs are for internal Docker communication, diagnostics, or local service testing only.
+
+BASE URLS AND SERVICE ROUTING
+-----------------------------
+Browser/API gateway:
+  http://localhost
+
+Backend direct (diagnostics only):
+  http://localhost:5000
+
+Backend through gateway:
+  http://localhost/api
+
+Corporate Portal API:
+  http://localhost/api/corporate
+
+SCADA gateway direct (when published):
+  http://localhost:5002
+
+SCADA gateway through backend proxy:
+  http://localhost/api/scada/*
+  http://localhost/api/modbus*
+  http://localhost/api/control
+
+Log collector direct (when published):
+  http://localhost:5006
+
+STANDARD RESPONSE SHAPES
+------------------------
+Most SIEM/SOAR endpoints use this success wrapper:
+
+  {
+    "data": <object or array>,
+    "message": "Success",
+    "timestamp": "2026-09-14T12:00:00.000000",
+    ...optional top-level copies of object fields...
+  }
+
+Paginated endpoints return a `data` object like:
+
+  {
+    "items": [],
+    "total": 0,
+    "page": 1,
+    "page_size": 25,
+    "pages": 0
+  }
+
+Errors use:
+
+  {
+    "error": {
+      "code": "BadRequest|Unauthorized|Forbidden|NotFound|InternalError",
+      "message": "Human-readable explanation",
+      "details": {}
+    }
+  }
+
+HTTP status meanings:
+  200  Successful read/update
+  201  Resource created
+  202  Accepted for processing or playbook execution
+  204  Successful logout with no response body
+  400  Invalid request
+  401  Missing/invalid authentication
+  403  Authenticated but not authorized
+  404  Resource not found
+  409  Invalid lifecycle transition or conflict
+  422  SCADA value rejected by safety range
+  500/503  Service or dependency failure
+
+AUTHENTICATION AND ROLES
+------------------------
+SIEM/SOAR login:
+
+  POST /api/auth/login
+
+Request:
+  {
+    "username": "admin",
+    "role": "admin"
+  }
+
+Response data:
+  {
+    "user": {
+      "id": "...",
+      "username": "admin",
+      "email": "admin@gotxa.local",
+      "role": "admin"
+    },
+    "access_token": "gotxa_sess_...",
+    "expires_at": "...",
+    "session_id": "..."
+  }
+
+Corporate Portal login is separate and returns the same style of session token:
+
+  POST /api/corporate/auth/login
+
+Request:
+  {
+    "username": "admin",
+    "password": "password456"
+  }
+
+Response:
+  {
+    "user": { "id": "...", "username": "admin", "name": "...", "department": "..." },
+    "access_token": "gotxa_sess_...",
+    "expires_at": "...",
+    "session_id": "..."
+  }
+
+Send the returned token as:
+  Authorization: Bearer gotxa_sess_...
+
+Supported role permissions:
+  admin        Full read/write, playbooks, containment, settings, reports, audit
+  soc_manager  Alerts/incidents/playbooks/containment/reports; no settings write
+  analyst      Read alerts, create/edit incidents; no playbooks, settings, or reports
+
+SIEM/SOAR AUTHENTICATION APIS
+-----------------------------
+POST /api/auth/login
+  Use: Create a recorded SIEM user session.
+  Auth: Public login endpoint.
+  Body: username, optional role.
+
+POST /api/auth/logout
+  Use: Revoke the Bearer session.
+  Auth: Bearer token recommended.
+  Response: {data: {status: "logged_out"}}.
+
+GET /api/auth/me
+  Use: Load the current SIEM user and session expiry after page load/refresh.
+  Auth: Bearer.
+
+GET /api/auth/sessions
+  Use: List active sessions for the current SIEM user.
+  Auth: Bearer.
+
+GET /api/capabilities
+  Use: Build permission-aware buttons and menus.
+  Auth: Bearer.
+  Response data.actions contains booleans such as alerts.suppress, playbooks.execute, containment.execute, and settings.write.
+
+GET /api/status
+  Use: Lightweight API status check.
+  Auth: Public.
+
+GET /health
+  Use: Backend/database health check.
+  Auth: Public.
+
+SIEM DASHBOARD AND LIVE EVENTS
+------------------------------
+GET /api/overview
+  Use: Main SOC overview cards, recent alerts, source health.
+  Auth: Bearer.
+  Response data:
+    kpis.total_open_alerts
+    kpis.critical_alerts
+    kpis.open_incidents
+    kpis.assigned_to_me
+    recent_alerts[]
+    source_health[]
+    timestamp
+
+GET /api/dashboard-data
+  Use: Legacy compact dashboard counts. Prefer /api/overview for new UI.
+  Auth: Bearer.
+  Response data: total_logs, total_alerts, critical_alerts, active_hosts.
+
+GET /api/overview/metrics
+  Use: Ingestion rate, healthy source count, SLA risk, critical alerts, active incidents.
+  Auth: Bearer.
+  Response data:
+    ingestion_rate_per_min
+    sources_healthy_count
+    sources_total_count
+    sla_at_risk_count
+    open_critical_alerts
+    active_incidents_count
+
+GET /api/raw-stream?limit=100&source=corp-portal&category=AUTH
+  Use: Live security event table/timeline.
+  Auth: Bearer.
+  Query:
+    limit: 1-500, default 100
+    source: optional substring filter
+    category: SYSTEM, SCADA_OT, CORP_PORTAL, or AUTH
+  Response: JSON array of event objects:
+    id, timestamp, time_display, formatted_time, log_source, event_type,
+    severity, level, host, category, message, plus raw normalized fields.
+  Polling: Use interval polling until a real event-stream endpoint is added.
+  Warning: If there are no SecurityEvent rows, this endpoint falls back to alerts.
+
+GET /api/recent-activity
+  Use: Recent activity widget.
+  Auth: Public currently; add authentication before production exposure.
+  Response: {activities: [{timestamp, formatted_time, description, status}]}.
+  Status values: success, warning, danger.
+
+GET /api/dashboard-metrics
+  Use: Compatibility metrics for older dashboard widgets.
+  Auth: Public currently; add authentication before production exposure.
+  Response: active_systems, total_transactions, open_issues, active_sessions,
+  failed_logins, security_score, response_time, data_volume.
+  Warning: This endpoint contains fallback values such as active_systems=5,
+  total_transactions=1234, and response_time=38. Replace frontend usage with
+  live /api/overview, /api/overview/metrics, and database-backed endpoints.
+
+ALERT APIS
+----------
+GET /api/alerts?page=1&page_size=25&severity=critical&status=open&assignee=<id>
+  Use: Alert list, filtering, pagination, and forensic fields.
+  Auth: Bearer.
+  Query: page, page_size/limit, severity, status, assignee.
+  Response data:
+    items[] with id, alert_id, title, severity, status, source, rule_id,
+    raw_event, assignee_id, assignee_name, detected_at, timestamp, created_at,
+    src_ip, attacker_ip, user_agent, http_method, request_uri, geoip_country,
+    attack_vector, mitre_tactic, mitre_technique, target_user, protocol,
+    attack_datetime, raw_parsed.
+
+GET /api/alerts/<database_alert_id>
+  Use: Alert investigation/detail view.
+  Auth: Bearer; access is team/owner controlled.
+  Response data: Full alert, forensic fields, incident_id, normalized_event,
+  entities, mitre_tactics, and related_alerts.
+
+POST /api/alerts/assign
+  Use: Assign selected alerts to a user.
+  Auth: Bearer + alerts.assign.
+  Body:
+    {"alert_ids": ["database-id"], "assignee_id": "user-id", "reason": "Triage"}
+
+POST /api/alerts/bulk-assign
+  Use: Assign selected alerts to a team.
+  Auth: Bearer + alerts.assign.
+  Body: {"alert_ids": ["database-id"], "team_id": "team-id"}
+
+POST /api/alerts/<database_alert_id>/suppress
+  Use: Suppress one alert.
+  Auth: Bearer + alerts.suppress.
+  Body:
+    {"reason": "Known maintenance", "scope": "single", "duration_hours": 24}
+  Consolidated variant accepts expires_at instead of duration_hours.
+
+PUT /api/alerts/<database_alert_id>/status
+  Use: Change alert workflow status.
+  Auth: Bearer.
+  Body:
+    {"status": "open|investigating|resolved|closed", "reason": "..."}
+
+INCIDENT APIS
+-------------
+GET /api/incidents?page=1&page_size=25&status=open&priority=high
+  Use: Incident/case list.
+  Auth: Bearer.
+  Response data.items[]: id, incident_id, title, status, severity, priority,
+  owner_id, owner_name, alert_count, created_at.
+
+GET /api/incidents/<database_incident_id>
+  Use: Full case detail.
+  Auth: Bearer.
+  Response data: description, lifecycle status, owner, affected_assets,
+  response_actions, MITRE tactics, resolution fields, alert/task/evidence counts,
+  detected_at, and created_at.
+
+GET /api/incidents/summary
+  Use: Case KPI page.
+  Auth: Bearer.
+  Response data: total_incidents, total_open, closed_incidents_count,
+  by_severity, new_last_24h, mean_time_to_resolve_minutes,
+  open_tasks_count, overdue_tasks_count, post_incident_actions_count.
+
+POST /api/incidents
+  Use: Create a case manually or elevate alerts.
+  Auth: Bearer + incidents.create.
+  Body:
+    {
+      "title": "Credential attack against corporate portal",
+      "description": "...",
+      "severity": "medium|high|critical",
+      "priority": "low|medium|high|critical",
+      "alert_ids": ["database-alert-id"]
+    }
+
+PUT /api/incidents/<database_incident_id>/status
+  Use: Change case lifecycle.
+  Auth: Bearer + incidents.edit.
+  Valid transitions:
+    open -> investigating|closed
+    investigating -> contained|closed
+    contained -> resolved|closed
+    resolved -> closed
+  Body for close:
+    {"status": "closed", "closure_reason": "...", "lessons_learned": "..."}
+
+POST /api/incidents/<database_incident_id>/assign
+  Use: Assign an incident owner.
+  Auth: Bearer + incidents.edit.
+  Body: {"owner_id": "user-id"}
+
+POST /api/incidents/<database_incident_id>/link-alert
+  Use: Attach an existing alert to a case.
+  Auth: Bearer.
+  Body: {"alert_id": "database-alert-id"}
+
+GET /api/incidents/<incident_id>/tasks
+  Use: List case tasks.
+  Auth: Bearer.
+  Response: task list including title/status/due information.
+
+POST /api/incidents/<incident_id>/tasks
+  Use: Add a case task.
+  Auth: Bearer + incidents.edit.
+  Body: task title, status, priority, due_at as supported by the model.
+
+SOAR AND CONTAINMENT APIS
+-------------------------
+GET /api/v1/soar/actions?limit=50
+  Use: Recent executed actions plus available playbook catalog.
+  Auth: Public currently in code; protect this endpoint before production.
+  Response:
+    data: recent action records
+    actions: playbook catalog with id, name, category, risk_level,
+    requires_approval, estimated_time.
+
+POST /api/v1/soar/execute
+  Use: Execute an approved/manual playbook.
+  Auth: Bearer + playbooks.execute.
+  Body:
+    {
+      "playbook_id": "containment.block_ip",
+      "target_id": "172.26.0.5",
+      "mode": "live|dry_run",
+      "parameters": {"ip": "172.26.0.5", "target_ip": "172.26.0.5", "host": "New_Machine"},
+      "reason": "Approved incident response",
+      "change_ticket": "CHG-1234"
+    }
+  Important playbook IDs:
+    containment.block_ip
+    containment.isolate_host
+    scada.emergency_containment
+    response.reset_password
+    investigation.collect_artifacts
+    rate_limit
+    monitor_escalation
+  IP blocking returns outputs.enforcement=real or simulated and a truthful status.
+
+POST /api/containment-requests
+  Use: Create a containment request requiring approval workflow.
+  Auth: Bearer + containment.execute.
+  Body:
+    {"action": "block_ip|isolate_host|disable_user", "target": "172.26.0.5", "alert_id": "...", "reason": "..."}
+  Response status starts as pending_approval.
+
+POST /api/playbooks/<playbook_id>/executions
+  Use: Consolidated playbook compatibility endpoint.
+  Auth: Bearer + playbooks.execute.
+  Body: {"mode": "dry_run|live", "parameters": {}}
+  Response: 202 execution_id, playbook_id, status, mode, created_at.
+  Note: This compatibility endpoint currently starts a recorded execution response;
+  use /api/v1/soar/execute for real enforcement.
+
+GET /api/v1/soar/history?limit=50
+GET /api/v1/soar/executions?limit=50
+  Use: SOAR execution history.
+  Auth: Bearer.
+
+SETTINGS, AUDIT, AND DATA SOURCES
+---------------------------------
+GET /api/data-sources/metrics
+  Use: Source health, last-seen, ingestion rates, drop/error rates.
+  Auth: Bearer.
+
+GET /api/data-sources
+  Use: Full data source list.
+  Auth: Bearer.
+
+POST /api/data-sources
+  Use: Register a data source.
+  Auth: Bearer + settings.write.
+  Body: source name, connector_type, status, and source configuration.
+
+GET /api/threat-intelligence/feeds
+  Use: Threat feed health and indicator counts.
+  Auth: Bearer.
+
+POST /api/threat-intelligence/feeds
+  Use: Add a threat intelligence feed.
+  Auth: Bearer + settings.write.
+  Body: feed_id, name, source_url, and feed configuration.
+
+POST /api/threat-intelligence/feeds/<feed_id>/sync
+  Use: Trigger feed synchronization.
+  Auth: Bearer + settings.write.
+
+GET /api/settings
+  Use: Load global settings.
+  Auth: Bearer + settings.read.
+
+PUT /api/settings
+  Use: Update global settings.
+  Auth: Bearer + settings.write.
+  Body: setting values plus reason/change_ticket as supported.
+
+PATCH /api/settings/<section>
+  Use: Update a settings section.
+  Auth: Bearer + settings.write.
+  Body:
+    {"values": {"key": "value"}, "reason": "...", "change_ticket": "..."}
+
+GET /api/settings/history
+  Use: Configuration change history.
+  Auth: Bearer + settings.read.
+
+GET /api/audit-events?page=1&page_size=25
+  Use: Audit trail.
+  Auth: Bearer + audit.view.
+
+GET /api/assets/export?format=csv
+  Use: Download current asset/source inventory as CSV.
+  Auth: Bearer + reports.generate.
+
+REPORTING APIS
+--------------
+POST /api/reports
+  Use: Generate a live PDF report and persist it.
+  Auth: Bearer + reports.generate.
+  Body:
+    {"type": "executive|compliance|technical", "title": "Optional title", "format": "pdf", "range": {"from": "ISO date", "to": "ISO date"}}
+  Response data: report_id, status, download_url, file_size, title.
+
+POST /api/reports/generate
+  Use: Compatibility report generation endpoint.
+  Auth: Bearer.
+  Body: type, title.
+
+GET /api/reports
+  Use: List generated reports.
+  Auth: Bearer.
+
+GET /api/reports/download?type=executive
+  Use: Generate and download a live PDF immediately.
+  Auth: Bearer.
+  Response: application/pdf attachment.
+
+GET /api/reports/<report_id>/download
+  Use: Download an existing PDF.
+  Auth: Bearer.
+  Response: application/pdf attachment.
+
+GET /api/reports/<report_id>/status
+  Use: Poll report status.
+  Auth: Bearer.
+
+CORPORATE PORTAL APIS
+---------------------
+All paths below start with /api/corporate. The Corporate Portal uses its own login/session middleware. Send `Authorization: Bearer <corporate access_token>` after login.
+
+POST /api/corporate/auth/login
+  Use: Corporate user login and security telemetry.
+  Body: username, password.
+  Failed attempts create SecurityEvent records and RULE-AUTH-FAILED alerts.
+
+POST /api/corporate/auth/logout
+  Use: End corporate session.
+  Auth: Corporate Bearer.
+  Response: 204.
+
+GET /api/corporate/me
+  Use: Current corporate user profile.
+  Auth: Corporate Bearer.
+
+GET /api/corporate/dashboard
+  Use: Corporate landing page data: systems, tasks, announcements, activity, and admin summary.
+  Auth: Corporate Bearer.
+  Note: Current implementation includes in-memory demo arrays; replace those values with persistent APIs before production.
+
+GET /api/corporate/systems
+  Use: Corporate systems/service status list.
+  Auth: Corporate Bearer.
+
+PATCH /api/corporate/systems/<system_id>
+  Use: Update system status/message.
+  Auth: Corporate Bearer.
+  Body: {"status": "operational|degraded|offline", "message": "..."}
+
+GET /api/corporate/tasks?status=open
+  Use: Corporate task list.
+  Auth: Corporate Bearer.
+
+POST /api/corporate/tasks
+  Use: Create a task.
+  Auth: Corporate Bearer.
+  Body: {"title": "...", "priority": "low|medium|high"}
+
+PATCH /api/corporate/tasks/<task_id>
+  Use: Update task.
+  Auth: Corporate Bearer.
+  Body: {"status": "open|in_progress|completed", "title": "...", "priority": "..."}
+
+GET /api/corporate/announcements
+  Use: List announcements.
+  Auth: Corporate Bearer.
+
+POST /api/corporate/announcements
+  Use: Publish an announcement.
+  Auth: Corporate Bearer.
+  Body: {"title": "...", "body": "...", "severity": "info|warning|critical"}
+
+GET /api/corporate/activity
+  Use: Corporate activity feed.
+  Auth: Corporate Bearer.
+  Note: Current response is partly demo/in-memory and must be replaced with persisted activity data.
+
+GET /api/corporate/auth-stats
+  Use: Failed/successful login counts and recent authentication attempts.
+  Auth: Currently public in code; protect before production.
+  Response: total_sessions, active_sessions, total_failed_logins, recent_failed_attempts, recent_successful_logins, brute_force_alert.
+
+GET /api/corporate/sessions
+  Use: SIEM/admin session monitoring.
+  Auth: Currently public in code; protect before production.
+
+POST /api/corporate/sessions/<session_id>/revoke
+  Use: Revoke a corporate user session.
+  Auth: Currently public in code; protect before production.
+
+GET /api/corporate/admin/overview
+  Use: Admin-only corporate KPIs and team workload.
+  Auth: Corporate Bearer; user role must be admin.
+
+GET /api/corporate/users
+  Use: Corporate directory/user selector.
+  Auth: Currently public in code; protect before production.
+
+EVENT INGESTION AND DEVICE APIS
+-------------------------------
+POST /api/ingest/events
+  Use: Authenticated collector/SCADA event ingestion.
+  Auth: `X-Collector-Token: <COLLECTOR_INGEST_TOKEN>` when token is configured.
+  Body:
+    {"events": [{"message": "...", "timestamp": "ISO-8601", "host": "...", "level": "info|warn|high|critical", "device": {"hostname": "...", "device_type": "..."}, "src_ip": "..."}]}
+  Result: Persists SecurityEvent records; high/critical events create Alerts and may trigger SOAR.
+
+POST /api/logs/ingest
+  Use: Compatibility alias for event ingestion.
+  Auth: Collector token when configured.
+  Body: Same event batch structure.
+
+GET /api/devices
+  Use: Device inventory.
+  Auth: Bearer.
+
+PATCH /api/devices/<device_id>/trust
+  Use: Change trusted/untrusted/blocked device state.
+  Auth: Bearer + settings.write.
+  Body: {"trust_state": "trusted|untrusted|blocked"}
+
+SCADA AND MODBUS APIS
+---------------------
+Preferred browser routes go through the backend/gateway. Direct SCADA gateway routes are listed below for service-to-service use.
+
+GET /api/modbus
+  Use: Current telemetry for all refinery machines.
+  Gateway proxy: GET /api/modbus.
+  Response: machine telemetry object, including status and current values.
+
+GET /api/modbus/refinery-1
+  Use: Refinery 1 heater telemetry.
+  Response: temperature, pressure, status, last_update.
+
+GET /api/modbus/refinery-2
+  Use: Refinery 2 flow telemetry.
+  Response: flow_rate, temperature, status, last_update.
+
+POST /api/v1/scada/control
+POST /api/scada/control
+  Use: Backend-audited SCADA control/attack endpoint. It records OT telemetry and creates a critical RULE-OT-UNAUTHORIZED-OVERRIDE alert for actions containing OVERRIDE or MAX.
+  Body example:
+    {"machine_id": "r1_heater", "action": "SET_TEMPERATURE", "target_temperature": 185.0, "operator": "operator-id"}
+  Response: status=intercepted_and_audited, machine_id, action, event_id, audit.
+  Important: This endpoint is for audited control integration/testing; use the gateway command API for validated machine controls.
+
+GET /api/scada/machines
+  Use: List SCADA machines, live status, available controls, current control state.
+  Proxy target: http://ot-scada-gateway:5002/api/scada/machines.
+  Response: {items: [{id, name, controls, status, control_state}]}.
+
+POST /api/scada/machines/register
+  Use: Register a new PLC/machine in the SCADA gateway.
+  Body: id, name, host, port, slave_id, poll_interval, registers, controls.
+  Response: 201 {status: registered, machine: {...}}.
+
+POST /api/scada/machines/<machine_id>/commands
+  Use: Apply a validated machine command and audit it.
+  Body: {"command": "...", "value": 185.0, "reason": "Approved change"}
+  Response: 202 command audit record with command_id.
+  Safety: Range violations return 422; emergency_stop requires a reason.
+
+GET /api/scada/commands/<command_id>
+  Use: Retrieve a submitted SCADA command/audit result.
+
+GET /api/scada/machines/<machine_id>/history?metric=temperature
+  Use: Historical samples for one machine metric.
+  Query metric is required and must match a registered metric.
+
+GET /api/scada/alarms
+  Use: Current SCADA alarms.
+  Response: {items: [...]}
+
+POST /api/scada/alarms/<alarm_id>/acknowledge
+  Use: Acknowledge an alarm and publish the acknowledgement to SIEM.
+  Headers: optional X-Operator.
+  Body: {"note": "Investigated and safe"}
+
+GET /api/scada/audit?machine_id=r1_heater
+  Use: SCADA command/control audit history.
+
+GET /api/scada/health (direct gateway only: GET /health)
+  Use: SCADA gateway and PLC health.
+  Response: status, service, machines_count, machines.
+
+SCADA FRONTEND FALLBACK WARNING
+-------------------------------
+The backend proxy currently returns simulated telemetry/machine/alarm values when the SCADA gateway is unavailable. The frontend must display `degraded` or `offline` and must not present fallback telemetry as real plant state. Remove hardcoded values from frontend bundles and use the actual response status.
+
+LOG COLLECTOR APIS
+------------------
+GET http://localhost:5006/
+  Use: Collector's raw-log dashboard.
+
+GET http://localhost:5006/api/raw-stream
+  Use: Read the collector's in-memory raw log buffer.
+  Response: JSON array of recently collected raw records.
+  Warning: This is an in-memory buffer and is not the durable SIEM source of truth. Use /api/raw-stream on the backend for persisted SecurityEvent data.
+
+The collector sends normalized events to:
+  POST http://backend:5000/api/ingest/events
+
+Required collector environment:
+  SIEM_INGRESS_URL
+  COLLECTOR_INGEST_TOKEN
+  COLLECTOR_PORT
+  LOGS_BASE_DIR
+
+JIT ACCESS APIS
+---------------
+GET /api/access/jit-sessions
+  Use: List currently approved and unexpired elevated sessions.
+  Auth: Bearer.
+
+POST /api/access/jit-sessions
+  Use: Request temporary elevated access.
+  Auth: Bearer.
+  Body: {"reason": "...", "ticket_id": "CHG-1234", "duration_hours": 2}
+  Response: session_id, status, expires_at.
+
+POST /api/access/jit-sessions/<session_id>/approve
+  Use: Approve a pending JIT request.
+  Auth: Bearer + settings.write.
+
+POST /api/access/jit-sessions/<session_id>/revoke
+  Use: Revoke an elevated JIT session.
+  Auth: Bearer + settings.write.
+
+DATABASE ADMIN APIS
+-------------------
+These endpoints exist for administrative/database tooling and are not normal
+frontend dashboard APIs. Do not expose them in the general user interface.
+
+GET /api/db/tables
+  Use: List available database tables.
+  Auth: Bearer.
+
+GET /api/db/tables/<table_name>
+  Use: Read table metadata/records for authorized administrative tooling.
+  Auth: Bearer.
+
+POST /api/db/tables/<table_name>
+  Use: Insert a database record from administrative tooling.
+  Auth: Bearer.
+
+PUT /api/db/tables/<table_name>
+  Use: Update database records from administrative tooling.
+  Auth: Bearer.
+
+DELETE /api/db/tables/<table_name>
+  Use: Delete database records from administrative tooling.
+  Auth: Bearer.
+
+POST /api/db/query
+  Status: Disabled (410 Gone).
+  Reason: Arbitrary SQL execution is intentionally disabled to prevent SQL injection
+  and database abuse. Use a purpose-built typed endpoint instead.
+
+FRONTEND DEMO/FALLBACK DATA TO REMOVE
+-------------------------------------
+Remove or replace these patterns from frontend code:
+
+1. Hardcoded SIEM metrics such as total_transactions=1234, response_time=38, or security_score defaults.
+2. Hardcoded alert/incident arrays and synthetic source/attack events.
+3. Fake report objects created locally instead of calling POST /api/reports and downloading the returned URL.
+4. Local fallback machine values such as refinery temperature=182.4 or flow_rate=54.8 when the gateway is down.
+5. Local default alarm lists and fake command success messages.
+6. Corporate Portal SYSTEMS, TASKS, ANNOUNCEMENTS, and ACTIVITY demo arrays once persistent endpoints are available.
+7. Client-side “success” messages after a failed network request. Show the server error and preserve the failed state.
+8. Direct `http://localhost:5002` URLs in browser code. Use gateway paths so deployment hostnames work.
+9. Use of `X-User-ID: admin` in production. Use the returned Bearer token.
+10. Treating `status: 200` from a compatibility endpoint as real enforcement. For SOAR, inspect execution status and outputs.enforcement.
+
+RECOMMENDED FRONTEND API CLIENT
+--------------------------------
+Every frontend should use one shared request helper:
+
+  async function apiRequest(path, options = {}) {
+    const token = sessionStorage.getItem('gotxa_access_token');
+    const response = await fetch(path, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? {Authorization: `Bearer ${token}`} : {}),
+        ...(options.headers || {})
+      }
+    });
+    const body = response.status === 204 ? null : await response.json();
+    if (!response.ok) {
+      throw new Error(body?.error?.message || `Request failed: ${response.status}`);
+    }
+    return body;
+  }
+
+For every dashboard:
+  - Load authentication/user state first.
+  - Load capabilities before rendering action buttons.
+  - Use AbortController for polling cleanup.
+  - Show loading, empty, degraded, unauthorized, and error states.
+  - Stop polling after logout.
+  - Never put bearer tokens in URLs or logs.
+
+MINIMUM INTEGRATION ORDER
+-------------------------
+1. Login: POST /api/auth/login or /api/corporate/auth/login.
+2. Current user: GET /api/auth/me or /api/corporate/me.
+3. Permissions: GET /api/capabilities.
+4. SIEM overview: GET /api/overview and /api/overview/metrics.
+5. Alerts: GET /api/alerts and GET /api/alerts/<id>.
+6. Incidents: GET /api/incidents and GET /api/incidents/<id>.
+7. Live event stream: GET /api/raw-stream.
+8. SCADA state: GET /api/scada/machines and GET /api/modbus*.
+9. Corporate state: GET /api/corporate/dashboard, /systems, /tasks, /announcements.
+10. Mutations only after capability checks: status changes, suppressions, assignments, commands, playbooks, reports.
+
+KNOWN BACKEND CONTRACT NOTES
+----------------------------
+- The backend registers several legacy and consolidated route families. New frontend work should prefer the canonical routes in this file and avoid adding more aliases.
+- Corporate Portal task/system/announcement data is currently stored in process memory in api_corporate.py. It will reset when the backend restarts; the frontend should not treat it as durable until persistence is implemented.
+- Saved views currently return a compatibility response and are not persisted. Do not present them as durable user configuration without implementing storage.
+- Some reporting and detection-rule endpoints contain placeholder values or dry-run behavior. Label them accordingly until their services are connected to real storage/execution.
+- Real IP blocking requires SOAR_REAL_MODE=true, the backend NET_ADMIN capability, and the iptables-enabled backend image. The response reports whether enforcement was real or simulated.
+- SCADA emergency containment is represented in the current SOAR implementation and must be reviewed before production use; never silently execute dangerous plant actions from a frontend click.
+- Attack simulation endpoints and scripts are for the authorized GotXA lab only.
+
+ENDPOINT QUICK INDEX
+--------------------
+SIEM core:
+  /api/overview
+  /api/overview/metrics
+  /api/dashboard-data
+  /api/raw-stream
+  /api/alerts
+  /api/incidents
+  /api/capabilities
+  /api/audit-events
+
+Actions:
+  /api/alerts/assign
+  /api/alerts/{id}/suppress
+  /api/alerts/{id}/status
+  /api/incidents/{id}/status
+  /api/incidents/{id}/assign
+  /api/v1/soar/actions
+  /api/v1/soar/execute
+  /api/containment-requests
+
+Corporate:
+  /api/corporate/auth/login
+  /api/corporate/auth/logout
+  /api/corporate/me
+  /api/corporate/dashboard
+  /api/corporate/systems
+  /api/corporate/tasks
+  /api/corporate/announcements
+  /api/corporate/activity
+  /api/corporate/auth-stats
+
+SCADA:
+  /api/modbus
+  /api/modbus/refinery-1
+  /api/modbus/refinery-2
+  /api/scada/machines
+  /api/scada/machines/{id}/commands
+  /api/scada/alarms
+  /api/scada/audit
+  /api/v1/scada/control
+
+Ingestion:
+  /api/ingest/events
+  /api/logs/ingest
+  /api/devices
+
+Reports:
+  /api/reports
+  /api/reports/download
+  /api/reports/{id}/download
+  /api/reports/{id}/status
