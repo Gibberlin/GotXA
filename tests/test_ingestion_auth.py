@@ -25,10 +25,10 @@ class CollectorAuthorizationTests(unittest.TestCase):
             self.assertFalse(self.check_header({'X-Collector-Token': 'test-token'}))
             self.assertFalse(self.check_header({}))
 
-    def test_unconfigured_token_preserves_development_mode(self):
+    def test_unconfigured_token_is_rejected(self):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop('COLLECTOR_INGEST_TOKEN', None)
-            self.assertTrue(self.check_header({}))
+            self.assertFalse(self.check_header({}))
 
 
 if __name__ == '__main__':

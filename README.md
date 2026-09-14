@@ -56,6 +56,24 @@
      PLC-1 (5003)    PLC-2 (5004)  /logs/corp/*    /logs/ot-*            Target: gotxa-net
 ```
 
+### Event sources and flows
+
+GotXA accepts multiple event sources. Attack-generated events are created directly as `SecurityEvent` records by the API path; they do not require a `.log` file or `log_collector.py`.
+
+```text
+Attack scripts / Corporate API / SCADA Gateway
+                    |
+                    v
+              SecurityEvent -> PostgreSQL -> Dashboard
+
+Optional mounted .log files -> log_collector.py -> POST /api/ingest/events
+                                             |
+                                             v
+                                        SecurityEvent
+```
+
+Redis/Celery is used for background work such as report generation, not for normal event ingestion. The file collector is an optional integration for environments that already produce file-based logs.
+
 ---
 
 ## ✨ Key Capabilities
@@ -74,12 +92,12 @@
 
 ### ⚔️ 3. Isolated Adversary Simulation Node (`New_Machine`)
 *   **Dedicated Red Team Container**: `New_Machine` runs inside `gotxa-net` (`172.26.0.5`) to simulate adversary attacks.
-*   **Automated Exploit Suites**: Pre-packaged scripts for internal reconnaissance (`port_scanner.py`), SQL injection (`attack_sqli.py`), corporate credential spraying (`attack_bruteforce.py`), and OT Modbus overrides (`attack_modbus_ot.py`).
+*   **Automated Simulation Suites**: Pre-packaged scripts for TCP socket reconnaissance (`port_scanner.py`), SQL injection simulation/detection testing (`attack_sqli.py`), corporate credential spraying (`attack_bruteforce.py`), and simulated OT Modbus overrides (`attack_modbus_ot.py`).
 *   **Real-Time SIEM Ingestion Verification**: All attacks executed from `New_Machine` generate real-time SIEM logs with actual source IP attribution (`172.26.0.5`).
 
 ### 🛡️ 4. Automated SOAR Response Playbooks
 *   **Closed-Loop Defense**: Attack $\rightarrow$ Real-Time Ingestion $\rightarrow$ Rule Engine $\rightarrow$ Alert Generation $\rightarrow$ SOAR Playbook Execution.
-*   **Active Mitigations**: Dynamic `iptables` IP blocking, Docker container lateral isolation, session revocation, and automated containment.
+*   **Containment status**: Actions are labeled `Simulated Containment` unless `SOAR_REAL_MODE=true` performs a real supported firewall change. PLC actions in this cyber-range are simulated/emulated.
 
 ### 🏭 5. Industrial OT Simulation & Holographic SCADA HMI
 *   **Refinery 1 (Port 5003)**: Crude oil heater (temperature 170–210 °C, pressure 45–75 PSI).

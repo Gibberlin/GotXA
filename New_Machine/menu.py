@@ -28,9 +28,9 @@ def main_menu():
     show_banner()
     while True:
         print(f"{Fore.CYAN}[--- SELECT PENTEST ATTACK VECTOR ---]{Style.RESET_ALL}")
-        print(f"  {Fore.GREEN}[1]{Style.RESET_ALL} Internal Network & Port Reconnaissance (Nmap / Socket Scan)")
+        print(f"  {Fore.GREEN}[1]{Style.RESET_ALL} TCP Socket Port Scanner")
         print(f"  {Fore.GREEN}[2]{Style.RESET_ALL} Corporate Portal Brute Force & Credential Spray")
-        print(f"  {Fore.GREEN}[3]{Style.RESET_ALL} Corporate Portal SQL Injection (SQLi) Audit")
+        print(f"  {Fore.GREEN}[3]{Style.RESET_ALL} SQL Injection Simulation/Detection Test")
         print(f"  {Fore.GREEN}[4]{Style.RESET_ALL} Industrial OT / SCADA Modbus Register Attack")
         print(f"  {Fore.GREEN}[5]{Style.RESET_ALL} Run All Attack Vectors Concurrently")
         print(f"  {Fore.RED}[0]{Style.RESET_ALL} Exit Console")

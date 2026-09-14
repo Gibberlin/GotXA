@@ -8,6 +8,7 @@ from flask import Blueprint, request, g, jsonify
 from datetime import datetime
 from sqlalchemy import desc
 import ipaddress
+import logging
 import os
 import subprocess
 import uuid
@@ -20,6 +21,7 @@ from app.audit import AuditLogger
 
 api = Blueprint('api_actions', __name__, url_prefix='/api')
 audit = AuditLogger()
+logger = logging.getLogger(__name__)
 
 
 def _enforce_ip_block(target_ip):
@@ -383,7 +385,8 @@ def list_soar_actions():
                 }
                 if not any(r.get('action_id') == act['action_id'] for r in recent):
                     recent.append(act)
-        except Exception:
+        except Exception as error:
+            logger.error('Failed to merge persisted SOAR executions: %s', error)
             pass
 
         catalog = [
@@ -510,6 +513,12 @@ def run_playbook_logic(playbook_id, inputs=None, execution=None):
             'summary': f'Playbook {playbook_id} executed successfully.'
         })
 
+    real_firewall_action = playbook_id in ('containment.block_ip', 'brute_force.ip_quarantine') and outputs.get('enforcement') == 'real'
+    if not real_firewall_action:
+        outputs['execution_mode'] = 'simulated_containment'
+        outputs['action_label'] = 'Simulated Containment'
+        outputs['summary'] = f"[Simulated Containment] {outputs['summary']}"
+
     outputs['completed_at'] = datetime.utcnow().isoformat() + 'Z'
     return outputs
 
@@ -600,7 +609,8 @@ def execute_soar_playbook():
                 result_detail=outputs.get('summary', f"Playbook {action_id} executed."),
                 execution_id=execution.execution_id
             )
-        except Exception:
+        except Exception as error:
+            logger.error('Failed to record SOAR action %s: %s', action_id, error)
             pass
 
         audit.log(

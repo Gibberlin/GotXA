@@ -113,29 +113,31 @@ Example:
 
 ```dotenv
 TZ=Asia/Kolkata
+POSTGRES_PASSWORD=replace-with-a-strong-db-password
+DATABASE_URL=postgresql://siem_user:replace-with-a-strong-db-password@siem-postgres:5432/siem_db
 COLLECTOR_INGEST_TOKEN=replace-with-a-long-random-token
 ```
 
 `COLLECTOR_INGEST_TOKEN` protects log ingestion from the collector and SCADA gateway. Use the same value for services that submit events. Generate a strong value rather than using the example text.
 
-The Compose file currently supplies these internal defaults:
+The Compose file supplies only non-sensitive service defaults. Set the database password, matching `DATABASE_URL`, and collector token before starting the stack:
 
 | Setting | Current value | Purpose |
 | --- | --- | --- |
 | PostgreSQL database | `siem_db` | Application database |
 | PostgreSQL user | `siem_user` | Application database user |
-| PostgreSQL password | `siem_password_secure` | Development/demo password |
+| PostgreSQL password | `.env:POSTGRES_PASSWORD` | Required deployment secret |
 | PostgreSQL internal host | `siem-postgres` | Docker network hostname |
 | Redis internal host | `redis` | Celery broker and result backend |
 | Backend port | `5000` | Flask API |
 | Reports directory | `/app/reports` | Generated report storage |
-| SOAR enforcement | `true` in Compose | Applies IP-block rules inside the backend container |
+| SOAR enforcement | `false` in Compose | Keeps demo actions labeled `Simulated Containment` |
 
 For an internet-facing deployment, replace the demo database password and review the application authentication and secret handling before exposing port 80 or 443.
 
 ### SOAR enforcement scope
 
-With `SOAR_REAL_MODE=true`, the `containment.block_ip` playbook installs an `iptables` DROP rule in the backend container. This blocks direct connections from an attacker such as `New_Machine` to the backend. It does not automatically block an attacker whose traffic is proxied through `api-gateway`, because the backend then sees the gateway container as the network source. Set `SOAR_REAL_MODE=false` for dry-run demonstrations.
+With `SOAR_REAL_MODE=true`, the `containment.block_ip` playbook may install an `iptables` DROP rule in the backend container. Keep `SOAR_REAL_MODE=false` for demonstrations; those actions are explicitly labeled `Simulated Containment`. PLC actions remain simulated/emulated.
 
 ## 6. Start the Core Stack
 

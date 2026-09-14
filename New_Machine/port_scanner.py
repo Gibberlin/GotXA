@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Internal Network & Port Scanner
+TCP Socket Port Scanner
 Scans common ports and services across the GotXA internal container network.
 """
 
@@ -39,7 +39,7 @@ def scan_port(host, port):
 
 def run_network_scan():
     print(f"{Fore.CYAN}===================================================={Style.RESET_ALL}")
-    print(f"{Fore.CYAN}    GotXA Internal Network Recon & Port Scanner     {Style.RESET_ALL}")
+    print(f"{Fore.CYAN}    GotXA TCP Socket Port Scanner                  {Style.RESET_ALL}")
     print(f"{Fore.CYAN}===================================================={Style.RESET_ALL}\n")
 
     for host, ports in TARGET_HOSTS:

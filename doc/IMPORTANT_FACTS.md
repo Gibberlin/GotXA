@@ -37,8 +37,8 @@ When testing REST endpoints, pass the **`X-User-ID`** header to establish role i
 *   **Port**: `5432`
 *   **Database Name**: `siem_db`
 *   **Database User**: `siem_user`
-*   **Database Password**: `siem_password_secure`
-*   **ORM URI**: `postgresql://siem_user:siem_password_secure@siem-postgres:5432/siem_db`
+*   **Database Password**: Set `POSTGRES_PASSWORD` in the uncommitted root `.env` file.
+*   **ORM URI**: Set `DATABASE_URL` in the uncommitted root `.env` file.
 
 ### 2.3 Collector Ingestion Token
 *   **Environment Variable**: `COLLECTOR_INGEST_TOKEN`
@@ -50,7 +50,7 @@ When testing REST endpoints, pass the **`X-User-ID`** header to establish role i
 
 | Variable | Default Value | Purpose |
 | :--- | :--- | :--- |
-| `DATABASE_URL` | `postgresql://siem_user:siem_password_secure@siem-postgres:5432/siem_db` | PostgreSQL connection string. |
+| `DATABASE_URL` | `.env` value | PostgreSQL connection string. |
 | `CELERY_BROKER_URL` | `redis://redis:6379/0` | Redis broker URI for Celery. |
 | `CELERY_RESULT_BACKEND` | `redis://redis:6379/0` | Redis backend URI for Celery results. |
 | `COLLECTOR_INGEST_TOKEN` | *High entropy secret* | Auth token for `/api/ingest/events`. |

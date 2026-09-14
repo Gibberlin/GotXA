@@ -4,7 +4,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from app.auth import authenticate, error_response, require_permission
 from app.models import Device, SecurityEvent, LogSource, Alert, db
@@ -27,7 +27,7 @@ def _collector_authorized():
     if not supplied and request.headers.get('Authorization', '').startswith('Bearer '):
         supplied = request.headers.get('Authorization')[7:].strip()
     if not expected:
-        return True  # If no token configured in environment, allow ingestion for flexibility
+        return False
     try:
         return hmac.compare_digest(supplied, expected)
     except Exception:
@@ -97,7 +97,8 @@ def _update_log_source(hostname, device_type, occurred_at):
             source.last_event_timestamp = occurred_at
             source.total_events_ingested = (source.total_events_ingested or 0) + 1
             source.status = 'healthy'
-    except Exception:
+    except Exception as error:
+        current_app.logger.error('Failed to update log source %s: %s', hostname, error)
         pass
 
 def _infer_device_type(hostname):
@@ -234,7 +235,8 @@ def process_event_batch(events):
                         reason=f"Automated response to {sev_str.upper()} alert on {host_str}: {msg_str[:80]}",
                         inputs={'host': host_str, 'ip': event.get('src_ip') or event.get('ip') or '172.26.0.7'}
                     )
-                except Exception:
+                except Exception as error:
+                    current_app.logger.error('Failed to trigger SOAR playbook for %s: %s', host_str, error)
                     pass
             
             accepted += 1
@@ -349,7 +351,8 @@ def _evaluate_cross_boundary_correlation():
                     t3 = Task(incident_id=corr_inc.id, title="Perform root-cause analysis across IT/OT boundary", status='open')
                     db.session.add_all([t1, t2, t3])
                     corr_alert.incident_id = corr_inc.id
-                except Exception:
+                except Exception as error:
+                    current_app.logger.error('Failed to create correlated incident %s: %s', corr_id, error)
                     pass
 
                 db.session.add(corr_alert)
@@ -362,9 +365,11 @@ def _evaluate_cross_boundary_correlation():
                         reason=f"Automated multi-stage containment triggered for correlation {corr_id}",
                         inputs={'host': 'ot-plc-refinery-1', 'ip': '172.26.0.7'}
                     )
-                except Exception:
+                except Exception as error:
+                    current_app.logger.error('Failed to trigger correlated SOAR playbook %s: %s', corr_id, error)
                     pass
-    except Exception:
+    except Exception as error:
+        current_app.logger.error('Cross-boundary correlation failed: %s', error)
         pass
 
 @api.route('/ingest/events', methods=['POST'])
@@ -373,10 +378,7 @@ def ingest_events():
     auth_ok = _collector_authorized()
     payload = request.get_json(silent=True)
     if not auth_ok:
-        # Check if local/testing request
-        is_local = request.remote_addr in ('127.0.0.1', 'localhost', '::1') or 'corp-portal-agent' in str(payload) or 'corp-workstation-agent' in str(payload) or 'ot-plc' in str(payload)
-        if not is_local:
-            return error_response('Unauthorized', 'Valid collector token required', 401)
+        return error_response('Unauthorized', 'Valid collector token required', 401)
     
     if isinstance(payload, dict):
         events = payload.get('events')

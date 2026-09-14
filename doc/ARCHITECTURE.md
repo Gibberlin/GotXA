@@ -25,7 +25,7 @@ The GotXA environment models a segmented industrial enterprise with logically se
                                     │ Flask · Port 5000 │
                                     └─────────┬─────────┘
                               ┌───────────────┼───────────────┐
-                              ▼               ▼               ▼
+                            ▼               ▼               ▼
                         PostgreSQL          Redis       Celery Worker
                         (Port 5432)      (Port 6379)     (PDF Engine)
                               ▲
@@ -59,22 +59,24 @@ The Nginx Reverse Proxy (`api-gateway`) provides uniform TLS termination, load b
 To eliminate bottlenecks in high-frequency OT/IT environments, all telemetry and log forwarding is decoupled into parallel, non-blocking asynchronous pipelines:
 
 ```
-[PLC / Industrial Modbus Nodes] ──(Async Modbus)──> [SCADA Gateway Poller]
-                                                           │
-                                             (Non-blocking Queue)
-                                                           ▼
-                                               [SiemPublisher Workers]
-                                                           │
-                                                    (Parallel POST)
-                                                           ▼
-[Corporate Apps / Agents] ──(Real File Logs)──> [Parallel Log Collector] ──> [/api/ingest/events]
-                                                                                      │
-                                                                             (Celery / Worker Queue)
-                                                                                      ▼
-                                                                             [PostgreSQL DB Storage]
-                                                                                      │
-                                                                             [Real-Time Raw Stream]
+[Attack Scripts] -----------┐
+[Corporate API] ------------┼──> [Backend API] ──> [SecurityEvent]
+[SCADA Gateway] ------------┘                              │
+                                   v
+                             [PostgreSQL] ──> [Dashboard]
+
+[Optional mounted .log files] ──> [log_collector.py]
+                       │
+                       v
+                 [POST /api/ingest/events]
+                       │
+                       v
+                   [SecurityEvent]
+
+[PostgreSQL] ──> [Celery Worker] ──> [Background tasks, such as report generation]
 ```
+
+The direct attack/API path creates `SecurityEvent` records synchronously. The file collector is a separate, optional adapter for pre-existing file-based logs; it is not required for attack detection or dashboard events.
 
 ### Pipeline Guarantees
 1. **Zero Socket Starvation**: SCADA Modbus polling runs on dedicated asyncio event loops with connection pooling.

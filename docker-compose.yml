@@ -33,9 +33,9 @@ services:
     image: postgres:15-alpine
     container_name: Database
     environment:
-      POSTGRES_USER: siem_user
-      POSTGRES_PASSWORD: siem_password_secure
-      POSTGRES_DB: siem_db
+      POSTGRES_USER: ${POSTGRES_USER:-siem_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-siem_db}
     volumes:
       - siem-db-data:/var/lib/postgresql/data
     networks:
@@ -74,15 +74,15 @@ services:
     environment:
       TZ: ${TZ:-Asia/Kolkata}
       SIEM_TZ_OFFSET_MINUTES: "330"
-      DATABASE_URL: postgresql://siem_user:siem_password_secure@siem-postgres:5432/siem_db
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       FLASK_ENV: production
       DEBUG: 'False'
       LOG_LEVEL: INFO
       REPORTS_DIR: /app/reports
-      COLLECTOR_INGEST_TOKEN: ${COLLECTOR_INGEST_TOKEN:-}
-      SOAR_REAL_MODE: ${SOAR_REAL_MODE:-true}
+      COLLECTOR_INGEST_TOKEN: ${COLLECTOR_INGEST_TOKEN:?Set COLLECTOR_INGEST_TOKEN in .env}
+      SOAR_REAL_MODE: ${SOAR_REAL_MODE:-false}
     depends_on:
       siem-postgres:
         condition: service_healthy
@@ -124,7 +124,7 @@ services:
     container_name: celery-worker
     environment:
       TZ: ${TZ:-Asia/Kolkata}
-      DATABASE_URL: postgresql://siem_user:siem_password_secure@siem-postgres:5432/siem_db
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       FLASK_ENV: production
@@ -161,7 +161,7 @@ services:
     environment:
       TZ: ${TZ:-Asia/Kolkata}
       SIEM_INGRESS_URL: http://backend:5000/api/ingest/events
-      COLLECTOR_INGEST_TOKEN: ${COLLECTOR_INGEST_TOKEN:-}
+      COLLECTOR_INGEST_TOKEN: ${COLLECTOR_INGEST_TOKEN:?Set COLLECTOR_INGEST_TOKEN in .env}
       COLLECTOR_PORT: "5006"
     volumes:
       - ./logs:/logs:ro
@@ -191,7 +191,7 @@ services:
     environment:
       TZ: ${TZ:-Asia/Kolkata}
       SIEM_INGRESS_URL: http://backend:5000/api/ingest/events
-      COLLECTOR_INGEST_TOKEN: ${COLLECTOR_INGEST_TOKEN:-}
+      COLLECTOR_INGEST_TOKEN: ${COLLECTOR_INGEST_TOKEN:?Set COLLECTOR_INGEST_TOKEN in .env}
       PLC_REFINERY_1_HOST: ${PLC_REFINERY_1_HOST:-ot-plc-refinery-1}
       PLC_REFINERY_2_HOST: ${PLC_REFINERY_2_HOST:-ot-plc-refinery-2}
     depends_on:
@@ -199,6 +199,8 @@ services:
         condition: service_healthy
     networks:
       - gotxa-net
+    volumes:
+      - ./logs:/logs
     expose:
       - "5002"
     restart: unless-stopped

@@ -22,7 +22,7 @@ SQLI_PAYLOADS = [
 ]
 
 def run_sqli_test():
-    print(f"{Fore.CYAN}[*] Starting SQL Injection (SQLi) Audit Simulation...{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}[*] Starting SQL Injection Simulation/Detection Test...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}[*] Target endpoint: {TARGET_URL}{Style.RESET_ALL}\n")
 
     for i, payload in enumerate(SQLI_PAYLOADS, 1):
