@@ -28,8 +28,6 @@ def _collector_authorized():
         supplied = request.headers.get('Authorization')[7:].strip()
     if not expected:
         return True  # If no token configured in environment, allow ingestion for flexibility
-    if supplied in (expected, 'test-token', 'dev-token', 'gotxa-collector-token'):
-        return True
     try:
         return hmac.compare_digest(supplied, expected)
     except Exception:

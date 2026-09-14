@@ -7,6 +7,7 @@ Designed to stress-test SIEM detection and SOAR response capabilities.
 
 import time
 import random
+import os
 import requests
 import threading
 from datetime import datetime, timezone
@@ -19,6 +20,7 @@ SCADA_CONTROL_URL = f"{BACKEND_URL}/api/v1/scada/control"
 LOGIN_URL = f"{BACKEND_URL}/api/corporate/auth/login"
 INGEST_URL = f"{BACKEND_URL}/api/ingest/events"
 API_BASE = f"{BACKEND_URL}/api"
+COLLECTOR_TOKEN = os.getenv("COLLECTOR_INGEST_TOKEN", "")
 
 results = []
 lock = threading.Lock()
@@ -154,7 +156,7 @@ def wave_log_injection():
             r = requests.post(
                 INGEST_URL,
                 json={"events": [evt]},
-                headers={"X-Collector-Token": "test-token", "Authorization": "Bearer test-token"},
+                headers={"X-Collector-Token": COLLECTOR_TOKEN} if COLLECTOR_TOKEN else {},
                 timeout=4
             )
             log(Fore.YELLOW, "INJECT", f"Event #{i} [{evt['source']}] → {r.status_code}")

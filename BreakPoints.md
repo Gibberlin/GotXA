@@ -29,11 +29,11 @@
 
 **Root Cause:**
 1. The endpoint previously required `{ "events": [...] }` strictly as a list, rejecting single event dictionaries.
-2. `_collector_authorized()` only accepted specific environment tokens without fallback or flexible collector headers for testing scripts.
+2. `_collector_authorized()` did not consistently support the configured environment token across collector clients.
 
 **Fix Applied:**
 1. Modified `backend/app/api_ingestion.py`:
-   - Updated `_collector_authorized()` to support `X-Collector-Token`, `Authorization: Bearer <token>`, and allow dev/testing collector tokens (`test-token`, `dev-collector-token`).
+   - Updated `_collector_authorized()` to support `X-Collector-Token` and `Authorization: Bearer <token>` while comparing only against the configured environment token.
    - Updated `ingest_events()` to detect if the payload is a single event object or a list under `events`. If a single event is passed, it automatically wraps it in a single-element list `[payload]`.
 2. Updated `New_Machine/attack_multiwave.py` wave 5 to send valid collector headers and proper payload structures.
 
