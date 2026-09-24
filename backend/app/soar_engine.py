@@ -20,6 +20,25 @@ logger.setLevel(logging.INFO)
 # Maps rule title/substring -> list of (action_type, playbook_id, description_template)
 RULE_PLAYBOOK_MAP = [
     {
+        'pattern': 'rule-sql-injection',
+        'actions': [
+            ('ip_block', 'containment.block_ip', 'SQL injection detected from {ip}: Source IP blocked on WAF')
+        ]
+    },
+    {
+        'pattern': 'rule-auth-failed',
+        'actions': [
+            ('ip_block', 'containment.block_ip', 'Credential attack detected from {ip}: Source IP blocked'),
+            ('credential_lock', 'response.reset_password', 'Credential attack on {host}: Compromised credentials locked')
+        ]
+    },
+    {
+        'pattern': 'rule-ot-unauthorized-override',
+        'actions': [
+            ('scada_failsafe', 'scada.emergency_containment', 'Unauthorized OT override on {host}: Safety interlocks engaged')
+        ]
+    },
+    {
         'pattern': 'kernel panic',
         'actions': [
             ('service_restart', 'service_restart', 'Critical System Error on {host}: Automated service restart initiated')
@@ -178,7 +197,7 @@ class SoarEngineDaemon:
             try:
                 alerts = db.session.query(Alert).filter(
                     Alert.status.in_(['open', 'Open', 'NEW', 'active'])
-                ).order_by(Alert.created_at.asc()).limit(15).all()
+                ).order_by(Alert.created_at.asc()).with_for_update(skip_locked=True).limit(15).all()
             except Exception:
                 db.session.rollback()
                 return
@@ -218,6 +237,11 @@ class SoarEngineDaemon:
                 if not matched_actions:
                     continue
 
+                # Claim the alert before running actions so multiple worker daemons
+                # cannot execute the same automated response concurrently.
+                alert.status = 'investigating'
+                db.session.commit()
+
                 logger.info(f"🎯 [SOAR ENGINE] Executing automated mitigation for Alert {alert.alert_id or alert.id}: {alert.title}")
 
                 for action_type, playbook_id, desc_template in matched_actions:
@@ -256,6 +280,4 @@ class SoarEngineDaemon:
                         execution_id=exec_id
                     )
 
-                # Transition alert status to 'investigating'
-                alert.status = 'investigating'
                 db.session.commit()

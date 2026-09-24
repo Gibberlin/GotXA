@@ -768,17 +768,6 @@ def scada_control():
         )
         db.session.add(alert)
         
-        # Auto-trigger SOAR containment for critical OT parameter manipulation (BP#4)
-        try:
-            from app.api_v1_actions import auto_trigger_soar_playbook
-            auto_trigger_soar_playbook(
-                playbook_id='scada.emergency_containment',
-                reason=f"Automated containment triggered by critical OT parameter override on {machine_id}",
-                inputs={'host': f'ot-plc-{machine_id}', 'machine_id': machine_id, 'ip': client_ip}
-            )
-        except Exception:
-            pass
-        
     db.session.commit()
     
     return jsonify({

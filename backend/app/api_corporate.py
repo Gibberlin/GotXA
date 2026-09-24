@@ -60,6 +60,9 @@ from app.telemetry import register_connecting_host
 def _log_corp_security_event(level, message, details=None, is_failed_auth=False):
     """Log an actual security and audit event for Corporate Portal monitoring."""
     try:
+        details = details or {}
+        rule_id = details.get('rule_id') or ('RULE-AUTH-FAILED' if is_failed_auth else 'RULE-SECURITY-EVENT')
+        alert_severity = 'critical' if rule_id == 'RULE-SQL-INJECTION' else ('high' if is_failed_auth else level.lower())
         occurred_at = datetime.utcnow()
         host = 'corp-portal'
         client_ip = (details or {}).get('ip_address') or (request.headers.get('X-Forwarded-For', request.remote_addr) if request else '127.0.0.1')
@@ -142,15 +145,16 @@ def _log_corp_security_event(level, message, details=None, is_failed_auth=False)
 
         # Trigger SIEM alert for failed authentication attempts
         if is_failed_auth or level.upper() in ('HIGH', 'CRITICAL'):
-            alert_id = f"AUTH-FAIL-{uuid.uuid4().hex[:8].upper()}"
+            alert_prefix = 'SQLI' if rule_id == 'RULE-SQL-INJECTION' else 'AUTH-FAIL'
+            alert_id = f"{alert_prefix}-{uuid.uuid4().hex[:8].upper()}"
             db.session.add(Alert(
                 id=str(uuid.uuid4()),
                 alert_id=alert_id,
                 title=f"[CORP AUTH ALERT] {message}",
-                severity='high' if is_failed_auth else level.lower(),
+                severity=alert_severity,
                 status='open',
                 source=host,
-                rule_id='RULE-AUTH-FAILED' if is_failed_auth else 'RULE-SECURITY-EVENT',
+                rule_id=rule_id,
                 timestamp=occurred_at,
                 raw_event=event_payload
             ))
@@ -264,6 +268,8 @@ def login():
     password = (body.get('password') or '').strip()
     client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     user_agent = request.headers.get('User-Agent', 'Unknown')
+    sql_markers = ("' or ", ' union ', 'select ', '--', '/*', '*/', '1=1', 'drop table', 'sleep(')
+    is_sql_injection = any(marker in raw_identifier.lower() for marker in sql_markers)
     
     if not raw_identifier or not password:
         _log_corp_security_event(
@@ -291,6 +297,8 @@ def login():
             f"Failed Corporate Portal login attempt for user '{raw_identifier}' from {client_ip} (Invalid credentials: {failure_reason})",
             {
                 'action': 'auth.login.failed',
+                'event_type': 'SQL_Injection_Attempt' if is_sql_injection else 'Auth_Event',
+                'rule_id': 'RULE-SQL-INJECTION' if is_sql_injection else 'RULE-AUTH-FAILED',
                 'username': raw_identifier,
                 'reason': failure_reason,
                 'ip_address': client_ip,
@@ -308,6 +316,8 @@ def login():
             f"Failed Corporate Portal login attempt for user '{raw_identifier}' from {client_ip} (Invalid credentials: {failure_reason})",
             {
                 'action': 'auth.login.failed',
+                'event_type': 'SQL_Injection_Attempt' if is_sql_injection else 'Auth_Event',
+                'rule_id': 'RULE-SQL-INJECTION' if is_sql_injection else 'RULE-AUTH-FAILED',
                 'username': raw_identifier,
                 'reason': failure_reason,
                 'ip_address': client_ip,

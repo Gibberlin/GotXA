@@ -836,7 +836,8 @@ def handle_saved_views():
 def scada_gateway_proxy(subpath):
     """Proxy SCADA gateway endpoints (machines, alarms, audit, commands) to ot-scada-gateway."""
     import requests
-    target_url = f"http://ot-scada-gateway:5002/api/scada/{subpath}"
+    target_path = '/health' if subpath == 'health' else f'/api/scada/{subpath}'
+    target_url = f"http://ot-scada-gateway:5002{target_path}"
     try:
         req_headers = {k: v for k, v in request.headers if k.lower() not in ('host', 'content-length')}
         req_params = request.args.to_dict()
