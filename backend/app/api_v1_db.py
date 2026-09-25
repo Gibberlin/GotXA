@@ -303,6 +303,101 @@ def delete_row(table_name):
         db.session.rollback()
         return error_response('DatabaseError', str(e), 400)
 
+@api.route('/batch-operations', methods=['POST'])
+@authenticate
+def execute_batch_operations():
+    """Execute a set of safe database operations inside one API call."""
+    try:
+        payload = request.get_json(silent=True) or {}
+        queries = payload.get('queries', [])
+        if not isinstance(queries, list):
+            return error_response('BadRequest', 'queries must be a list', 400)
+
+        results = []
+        for query in queries:
+            if not isinstance(query, dict):
+                results.append({'error': 'Each query must be an object'})
+                continue
+
+            if 'sql' in query:
+                sql = query.get('sql')
+                if not isinstance(sql, str) or not sql.strip():
+                    results.append({'error': 'sql must be a non-empty string'})
+                    continue
+                result = db.session.execute(text(sql))
+                rows = [dict(r._mapping) for r in result] if hasattr(result, '_mapping') else []
+                results.append({'kind': 'sql', 'row_count': len(rows), 'rows': rows})
+                continue
+
+            table_name = query.get('table')
+            operation = query.get('operation')
+            if not table_name or not operation:
+                results.append({'error': 'table and operation are required'})
+                continue
+
+            table_name = _validate_identifier(table_name, 'table name')
+            table_exists = db.session.execute(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = :table_name
+                )
+            """), {'table_name': table_name}).scalar()
+            if not table_exists:
+                results.append({'table': table_name, 'error': 'Table not found'})
+                continue
+
+            if operation == 'select':
+                filters = query.get('filters', {})
+                if not isinstance(filters, dict):
+                    results.append({'table': table_name, 'error': 'filters must be an object'})
+                    continue
+                allowed_columns = _public_table_columns(table_name)
+                clauses = []
+                params = {}
+                for index, (column, value) in enumerate(filters.items()):
+                    column_name = _validate_identifier(column, 'column name')
+                    if column_name not in allowed_columns:
+                        results.append({'table': table_name, 'error': f'Unknown column: {column_name}'})
+                        break
+                    clauses.append(f'"{column_name}" = :filter_{index}')
+                    params[f'filter_{index}'] = value
+                else:
+                    select_sql = f'SELECT * FROM "{table_name}"'
+                    if clauses:
+                        select_sql += ' WHERE ' + ' AND '.join(clauses)
+                    rows = db.session.execute(text(select_sql), params).mappings().all()
+                    results.append({'table': table_name, 'operation': operation, 'rows': [dict(row) for row in rows]})
+                    continue
+            elif operation == 'insert':
+                values = query.get('data', {})
+                if not isinstance(values, dict) or not values:
+                    results.append({'table': table_name, 'error': 'data must be a non-empty object'})
+                    continue
+                allowed_columns = _public_table_columns(table_name)
+                columns = []
+                params = {}
+                for index, (column, value) in enumerate(values.items()):
+                    column_name = _validate_identifier(column, 'column name')
+                    if column_name not in allowed_columns:
+                        results.append({'table': table_name, 'error': f'Unknown column: {column_name}'})
+                        break
+                    columns.append(f'"{column_name}"')
+                    params[f'value_{index}'] = value
+                else:
+                    column_list = ', '.join(columns)
+                    placeholders = ', '.join([f':value_{index}' for index in range(len(values))])
+                    db.session.execute(text(f'INSERT INTO "{table_name}" ({column_list}) VALUES ({placeholders})'), params)
+                    db.session.commit()
+                    results.append({'table': table_name, 'operation': operation, 'inserted': True})
+                    continue
+
+            results.append({'table': table_name, 'operation': operation, 'error': 'Unsupported operation'})
+
+        return success_response({'processed': len(results), 'results': results}, 'Database batch operations processed', 200)
+    except Exception as e:
+        db.session.rollback()
+        return error_response('DatabaseError', str(e), 500)
+
 @api.route('/query', methods=['POST'])
 @authenticate
 def execute_custom_query():

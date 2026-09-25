@@ -529,45 +529,6 @@ def list_incidents():
     except Exception as e:
         return error_response('InternalError', str(e), 500)
 
-@api.route('/incidents/<incident_id>', methods=['GET'])
-@authenticate
-def get_incident_detail(incident_id):
-    """Get full incident details."""
-    try:
-        incident = db.session.query(Incident).filter_by(id=incident_id).first()
-        if not incident:
-            return error_response('NotFound', 'Incident not found', 404)
-        
-        if not g.auth_context.can_access_incident(incident):
-            return error_response('Forbidden', 'Cannot access this incident', 403)
-        
-        return success_response({
-            'id': incident.id,
-            'incident_id': incident.incident_id,
-            'title': incident.title,
-            'description': incident.description,
-            'status': incident.status,
-            'severity': incident.severity,
-            'priority': incident.priority,
-            'owner_id': incident.owner_id,
-            'owner_name': incident.owner.username if incident.owner else None,
-            'team_id': incident.team_id,
-            'root_cause': incident.root_cause,
-            'affected_assets': incident.affected_assets or [],
-            'response_actions': incident.response_actions or [],
-            'mitre_tactics': incident.mitre_tactics or [],
-            'resolution_notes': incident.resolution_notes,
-            'closure_reason': incident.closure_reason,
-            'lessons_learned': incident.lessons_learned,
-            'alert_count': len(incident.alerts),
-            'task_count': len(incident.tasks),
-            'evidence_count': len(incident.evidence),
-            'detected_at': incident.detected_at.isoformat() if incident.detected_at else None,
-            'created_at': incident.created_at.isoformat() if incident.created_at else None
-        })
-    except Exception as e:
-        return error_response('InternalError', str(e), 500)
-
 @api.route('/capabilities', methods=['GET'])
 @authenticate
 def get_capabilities():

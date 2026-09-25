@@ -71,247 +71,118 @@ def get_overview_metrics_consolidated():
     except Exception as e:
         return error_response('InternalError', str(e), 500)
 
-@api.route('/data-sources/metrics', methods=['GET'])
-@authenticate
-def get_data_sources_metrics_consolidated():
-    """Detailed ingestion metrics, drop rates, and parse errors per log source."""
-    try:
-        sources = db.session.query(LogSource).all()
-        
-        items = []
-        for source in sources:
-            # Status mapping
-            if source.status == 'healthy':
-                status = "Connected"
-            elif source.status == 'warning':
-                status = "Delayed"
-            else:
-                status = "Failing"
-            
-            # Last seen formatting
-            if source.last_event_timestamp:
-                delta = datetime.utcnow() - source.last_event_timestamp
-                if delta.total_seconds() < 60:
-                    last_seen = f"{int(delta.total_seconds())}s"
-                elif delta.total_seconds() < 3600:
-                    last_seen = f"{int(delta.total_seconds() / 60)}m"
-                else:
-                    last_seen = f"{int(delta.total_seconds() / 3600)}h"
-            else:
-                last_seen = "—"
-            
-            # Drop/error rate
-            total_events = max(source.total_events_ingested, 1)
-            error_rate = ((source.drop_count + source.parse_error_count) / total_events * 100)
-            drop_error_rate = f"{error_rate:.1f}%" if error_rate > 0 else "0%"
-            
-            items.append({
-                'source': source.name,
-                'status': status,
-                'last_seen': last_seen,
-                'drop_error_rate': drop_error_rate
-            })
-        
-        return success_response({'items': items})
-    except Exception as e:
-        return error_response('InternalError', str(e), 500)
-
 # ============================================================================
-# 2. INCIDENT & TASK MANAGEMENT
+# 2. ALERT OPERATIONS & CONTAINMENT
 # ============================================================================
 
-@api.route('/incidents/summary', methods=['GET'])
-@authenticate
-def get_incidents_summary_consolidated():
-    """Overall statistics of cases, severity breakdown, MTTR, and task queues."""
-    try:
-        total_incidents = db.session.query(Incident).count()
-        total_open = db.session.query(Incident).filter(Incident.status.in_(['open', 'investigating'])).count()
-        closed_count = db.session.query(Incident).filter_by(status='closed').count()
-        
-        # Severity breakdown
-        crit_count = db.session.query(Incident).filter_by(severity='critical').count()
-        high_count = db.session.query(Incident).filter_by(severity='high').count()
-        med_count = db.session.query(Incident).filter_by(severity='medium').count()
-        low_count = db.session.query(Incident).filter_by(severity='low').count()
-
-        # Last 24h new incidents
-        one_day_ago = datetime.utcnow() - timedelta(hours=24)
-        new_last_24h = db.session.query(Incident).filter(Incident.created_at >= one_day_ago).count()
-
-        # Open tasks
-        open_tasks = db.session.query(Task).filter_by(status='open').count()
-        
-        # Overdue tasks
-        overdue_tasks = db.session.query(Task).filter(
-            Task.status == 'open',
-            Task.due_at < datetime.utcnow()
-        ).count()
-        
-        # Post-incident actions
-        closed_incidents = db.session.query(Incident.id).filter_by(status='closed').subquery()
-        post_incident_actions = db.session.query(Task).filter(
-            Task.incident_id.in_(closed_incidents),
-            Task.status.in_(['open', 'in_progress'])
-        ).count()
-        
-        return success_response({
-            'total_incidents': total_incidents,
-            'total_open': total_open,
-            'closed_incidents_count': closed_count,
-            'by_severity': {
-                'critical': crit_count,
-                'high': high_count,
-                'medium': med_count,
-                'low': low_count
-            },
-            'new_last_24h': new_last_24h,
-            'mean_time_to_resolve_minutes': 28.5,
-            'open_tasks_count': open_tasks,
-            'overdue_tasks_count': overdue_tasks,
-            'post_incident_actions_count': post_incident_actions
-        })
-    except Exception as e:
-        return error_response('InternalError', str(e), 500)
-
-@api.route('/incidents', methods=['POST'])
-@authenticate
-@require_permission('incidents.create')
-def create_incident_consolidated():
-    """Create a new incident draft or elevate active alerts."""
-    try:
-        data = request.get_json()
-        
-        incident = Incident(
-            incident_id=f"INC-{uuid.uuid4().hex[:6].upper()}",
-            title=data.get('title'),
-            description=data.get('description', ''),
-            severity=data.get('severity', 'medium'),
-            priority=data.get('priority', 'medium'),
-            status='open',
-            owner_id=g.user.id,
-            team_id=g.user.team_id,
-            detected_at=datetime.utcnow()
-        )
-        
-        db.session.add(incident)
-        db.session.flush()
-        
-        # Link alerts if provided
-        alert_ids = data.get('alert_ids', [])
-        for alert_id in alert_ids:
-            alert = db.session.query(Alert).filter_by(id=alert_id).first()
-            if alert:
-                alert.incident_id = incident.id
-        
-        db.session.commit()
-        
-        return success_response({
-            'id': incident.id,
-            'incident_id': incident.incident_id,
-            'title': incident.title,
-            'priority': incident.priority,
-            'status': incident.status,
-            'owner': 'Unassigned',
-            'created_at': incident.created_at.isoformat()
-        }, 'Incident created', 201)
-    except Exception as e:
-        db.session.rollback()
-        return error_response('InternalError', str(e), 500)
-
-@api.route('/incidents/<incident_id>', methods=['GET'])
-@authenticate
-def get_incident_detail_consolidated(incident_id):
-    """Retrieve detailed information for a specific incident."""
-    try:
-        incident = db.session.query(Incident).filter_by(id=incident_id).first()
-        if not incident:
-            return error_response('NotFound', 'Incident not found', 404)
-        
-        # Calculate age
-        age_seconds = (datetime.utcnow() - incident.created_at).total_seconds()
-        if age_seconds < 60:
-            age = f"{int(age_seconds)}s"
-        elif age_seconds < 3600:
-            age = f"{int(age_seconds / 60)}m"
-        else:
-            age = f"{int(age_seconds / 3600)}h"
-        
-        return success_response({
-            'id': incident.id,
-            'incident_id': incident.incident_id,
-            'title': incident.title,
-            'priority': incident.priority,
-            'status': incident.status,
-            'owner': incident.owner.username if incident.owner else 'Unassigned',
-            'age': age,
-            'description': incident.description
-        })
-    except Exception as e:
-        return error_response('InternalError', str(e), 500)
-
-# ============================================================================
-# 3. ALERT OPERATIONS & CONTAINMENT
-# ============================================================================
-
-@api.route('/alerts/bulk-assign', methods=['POST'])
+@api.route('/alerts/batch-operations', methods=['POST'])
 @authenticate
 @require_permission('alerts.assign')
-def bulk_assign_alerts_consolidated():
-    """Bulk assign multiple alerts to a triage team or analyst."""
-    try:
-        data = request.get_json()
-        alert_ids = data.get('alert_ids', [])
-        team_id = data.get('team_id')
-        
-        alerts = db.session.query(Alert).filter(Alert.id.in_(alert_ids)).all()
-        
-        for alert in alerts:
-            # If team_id provided, find analysts in team and assign
-            if team_id:
-                team_members = db.session.query(User).filter_by(team_id=team_id).first()
-                if team_members:
-                    alert.assignee_id = team_members.id
-        
-        db.session.commit()
-        
-        return success_response({
-            'status': 'success',
-            'message': f'{len(alerts)} alerts assigned'
-        })
-    except Exception as e:
-        db.session.rollback()
-        return error_response('InternalError', str(e), 500)
+def batch_alert_operations():
+    """Apply alert assignment, suppression, and status updates in one request."""
+    data = request.get_json(silent=True) or {}
+    operations = data.get('operations', [])
+    if not isinstance(operations, list):
+        return error_response('BadRequest', 'operations must be a list', 400)
 
-@api.route('/alerts/<alert_id>/suppress', methods=['POST'])
+    results = []
+    for operation in operations:
+        if not isinstance(operation, dict):
+            results.append({'error': 'Each operation must be an object'})
+            continue
+
+        alert_ids = operation.get('alert_ids', [])
+        if not isinstance(alert_ids, list):
+            results.append({'type': operation.get('type'), 'error': 'alert_ids must be a list'})
+            continue
+
+        alerts = db.session.query(Alert).filter(Alert.id.in_(alert_ids)).all()
+        op_type = operation.get('type')
+
+        if op_type == 'assign':
+            assignee_id = operation.get('assignee_id')
+            if not assignee_id:
+                results.append({'type': op_type, 'error': 'assignee_id is required'})
+                continue
+            for alert in alerts:
+                alert.assignee_id = assignee_id
+            results.append({'type': op_type, 'updated_count': len(alerts)})
+        elif op_type == 'suppress':
+            reason = operation.get('reason', 'Manual suppression')
+            duration_minutes = operation.get('duration_minutes', 60)
+            for alert in alerts:
+                alert.is_suppressed = True
+                alert.suppression_reason = reason
+                alert.suppression_scope = operation.get('scope', 'single')
+                alert.suppression_expires_at = datetime.utcnow() + timedelta(minutes=duration_minutes)
+            results.append({'type': op_type, 'updated_count': len(alerts)})
+        elif op_type == 'status':
+            new_status = operation.get('status')
+            if new_status not in ['open', 'investigating', 'resolved', 'closed']:
+                results.append({'type': op_type, 'error': 'Invalid status'})
+                continue
+            for alert in alerts:
+                alert.status = new_status
+            results.append({'type': op_type, 'updated_count': len(alerts)})
+        else:
+            results.append({'type': op_type, 'error': 'Unsupported alert operation type'})
+
+    db.session.commit()
+    return success_response({'processed': len(results), 'results': results}, 'Alert batch operations processed', 200)
+
+@api.route('/incidents/<incident_id>/batch-update', methods=['POST'])
 @authenticate
-@require_permission('alerts.suppress')
-def suppress_alert_consolidated(alert_id):
-    """Suppress an alert for a specific window."""
-    try:
-        data = request.get_json()
-        
-        alert = db.session.query(Alert).filter_by(id=alert_id).first()
-        if not alert:
-            return error_response('NotFound', 'Alert not found', 404)
-        
-        alert.is_suppressed = True
-        alert.suppression_reason = data.get('reason', '')
-        
-        if data.get('expires_at'):
-            alert.suppression_expires_at = datetime.fromisoformat(data['expires_at'])
-        
-        alert.suppression_scope = data.get('scope', 'alert')
-        
-        db.session.commit()
-        
-        return success_response({
-            'alert_id': alert.alert_id,
-            'status': 'suppressed'
-        })
-    except Exception as e:
-        db.session.rollback()
-        return error_response('InternalError', str(e), 500)
+@require_permission('incidents.edit')
+def batch_update_incident(incident_id):
+    """Apply multiple incident updates in one request."""
+    incident = db.session.query(Incident).filter_by(id=incident_id).first()
+    if not incident:
+        return error_response('NotFound', 'Incident not found', 404)
+
+    payload = request.get_json(silent=True) or {}
+    updates = payload.get('updates', [])
+    if not isinstance(updates, list):
+        return error_response('BadRequest', 'updates must be a list', 400)
+
+    results = []
+    for update in updates:
+        if not isinstance(update, dict):
+            results.append({'error': 'Each update must be an object'})
+            continue
+
+        update_type = update.get('type')
+        if update_type == 'create-task':
+            task = Task(
+                incident_id=incident.id,
+                title=update.get('title'),
+                description=update.get('description', ''),
+                status='open',
+                assigned_to_id=update.get('assigned_to'),
+                due_at=datetime.fromisoformat(update['due_at']) if update.get('due_at') else None,
+            )
+            db.session.add(task)
+            db.session.flush()
+            results.append({'type': update_type, 'task_id': task.id})
+        elif update_type == 'link-alert':
+            alert_id = update.get('alert_id')
+            alert = db.session.query(Alert).filter_by(id=alert_id).first()
+            if not alert:
+                results.append({'type': update_type, 'error': 'Alert not found'})
+                continue
+            alert.incident_id = incident.id
+            results.append({'type': update_type, 'alert_id': alert.id})
+        elif update_type == 'update-status':
+            new_status = update.get('status')
+            if new_status not in ['open', 'investigating', 'contained', 'resolved', 'closed']:
+                results.append({'type': update_type, 'error': 'Invalid status'})
+                continue
+            incident.status = new_status
+            results.append({'type': update_type, 'status': incident.status})
+        else:
+            results.append({'type': update_type, 'error': 'Unsupported incident update type'})
+
+    db.session.commit()
+    return success_response({'incident_id': incident.incident_id, 'processed': len(results), 'results': results}, 'Incident batch update processed', 200)
 
 @api.route('/containment-requests', methods=['POST'])
 @authenticate
@@ -354,89 +225,50 @@ def create_containment_request():
         return error_response('InternalError', str(e), 500)
 
 # ============================================================================
-# 4. THREAT INTELLIGENCE & JIT ACCESS
+# 3. JIT ACCESS REVIEW & BATCH ACTIONS
 # ============================================================================
 
-@api.route('/threat-intelligence/feeds', methods=['GET'])
+@api.route('/access/jit-sessions/batch-action', methods=['POST'])
 @authenticate
-def list_threat_feeds_consolidated():
-    """Freshness, indicator count, and health of ingestion feeds."""
-    try:
-        feeds = db.session.query(ThreatIntelligenceFeed).all()
-        
-        items = []
-        for feed in feeds:
-            items.append({
-                'id': feed.id,
-                'feed_id': feed.feed_id,
-                'name': feed.name,
-                'status': feed.status,
-                'last_sync': feed.last_sync.isoformat() if feed.last_sync else None,
-                'indicators_count': feed.indicators_count
-            })
-        
-        return success_response({'items': items})
-    except Exception as e:
-        return error_response('InternalError', str(e), 500)
+@require_permission('settings.write')
+def batch_action_jit_sessions():
+    """Approve or revoke JIT sessions in one call."""
+    data = request.get_json(silent=True) or {}
+    actions = data.get('actions', [])
+    if not isinstance(actions, list):
+        return error_response('BadRequest', 'actions must be a list', 400)
 
-@api.route('/access/jit-sessions', methods=['GET'])
-@authenticate
-def list_jit_sessions_consolidated():
-    """Retrieve list of currently active Just-In-Time access sessions."""
-    try:
-        active_sessions = db.session.query(JITSession).filter(
-            JITSession.status == 'approved',
-            JITSession.expires_at > datetime.utcnow()
-        ).all()
-        
-        items = []
-        for session in active_sessions:
-            expires_in_seconds = (session.expires_at - datetime.utcnow()).total_seconds()
-            hours = int(expires_in_seconds // 3600)
-            minutes = int((expires_in_seconds % 3600) // 60)
-            expires_in = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
-            
-            items.append({
-                'user': session.user.email if session.user else None,
-                'role': session.elevated_role,
-                'expires_in': expires_in,
-                'ticket': session.ticket_id
-            })
-        
-        return success_response({'items': items})
-    except Exception as e:
-        return error_response('InternalError', str(e), 500)
+    results = []
+    for action in actions:
+        if not isinstance(action, dict):
+            results.append({'error': 'Each action must be an object'})
+            continue
 
-@api.route('/access/jit-sessions', methods=['POST'])
-@authenticate
-def create_jit_session_consolidated():
-    """Request immediate JIT privileged session."""
-    try:
-        data = request.get_json()
-        
-        duration_hours = data.get('duration_hours', 2)
-        expires_at = datetime.utcnow() + timedelta(hours=duration_hours)
-        
-        session = JITSession(
-            session_id=f"JIT-{uuid.uuid4().hex[:4].upper()}",
-            user_id=g.user.id,
-            reason=data.get('reason'),
-            ticket_id=data.get('ticket_id'),
-            expires_at=expires_at,
-            status='active'
-        )
-        
-        db.session.add(session)
-        db.session.commit()
-        
-        return success_response({
-            'session_id': session.session_id,
-            'status': session.status,
-            'expires_at': session.expires_at.isoformat()
-        }, 'JIT session created', 201)
-    except Exception as e:
-        db.session.rollback()
-        return error_response('InternalError', str(e), 500)
+        session_identifier = action.get('session_id')
+        action_type = action.get('action')
+        session = db.session.query(JITSession).filter(
+            (JITSession.id == session_identifier) | (JITSession.session_id == session_identifier)
+        ).first()
+
+        if not session:
+            results.append({'session_id': session_identifier, 'error': 'Session not found'})
+            continue
+
+        if action_type == 'approve':
+            session.status = 'approved'
+            session.approved_at = datetime.utcnow()
+            session.approved_by_id = g.user.id
+            session.elevated_role = action.get('elevated_role', 'admin')
+            results.append({'session_id': session.session_id, 'status': session.status})
+        elif action_type == 'revoke':
+            session.status = 'revoked'
+            session.revoked_at = datetime.utcnow()
+            results.append({'session_id': session.session_id, 'status': session.status})
+        else:
+            results.append({'session_id': session.session_id, 'error': 'Unsupported JIT action'})
+
+    db.session.commit()
+    return success_response({'processed': len(results), 'results': results}, 'JIT batch action processed', 200)
 
 @api.route('/access/review', methods=['GET'])
 @authenticate
@@ -648,70 +480,8 @@ def export_assets():
     except Exception as e:
         return error_response('InternalError', str(e), 500)
 
-@api.route('/reports', methods=['POST'])
-@authenticate
-@require_permission('reports.generate')
-def create_report():
-    """Generate Executive or NIST compliance report."""
-    try:
-        from app.pdf_generator import generate_report_pdf
-        from app.api_v1_reports import _build_live_report_payload
-        
-        data = request.get_json(silent=True) or {}
-        report_type = data.get('type', 'executive')
-        report_id = f"REP-{uuid.uuid4().hex[:4].upper()}"
-        
-        payload = _build_live_report_payload(report_type=report_type, title=data.get('title'))
-        payload['report_id'] = report_id
-        
-        pdf_buffer = generate_report_pdf(payload)
-        pdf_bytes = pdf_buffer.getvalue()
-        
-        reports_dir = os.getenv('REPORTS_DIR', '/app/reports')
-        os.makedirs(reports_dir, exist_ok=True)
-        file_path = os.path.join(reports_dir, f'report_{report_id}.pdf')
-        with open(file_path, 'wb') as f:
-            f.write(pdf_bytes)
-        
-        report = Report(
-            id=str(uuid.uuid4()),
-            report_id=report_id,
-            type=report_type,
-            format=data.get('format', 'pdf'),
-            title=payload['title'],
-            requested_by_id=g.user.id if hasattr(g, 'user') and g.user else None,
-            status='completed',
-            file_path=file_path,
-            file_size=len(pdf_bytes),
-            created_at=datetime.utcnow(),
-            generated_at=datetime.utcnow(),
-            completed_at=datetime.utcnow()
-        )
-        
-        if data.get('range'):
-            try:
-                report.date_from = datetime.fromisoformat(data['range']['from'])
-                report.date_to = datetime.fromisoformat(data['range']['to'])
-            except Exception:
-                pass
-        
-        db.session.add(report)
-        db.session.commit()
-        
-        return success_response({
-            'report_id': report_id,
-            'status': 'completed',
-            'download_url': f'/api/reports/{report_id}/download',
-            'file_size': len(pdf_bytes),
-            'title': payload['title']
-        }, 'Report generation completed', 201)
-    except Exception as e:
-        db.session.rollback()
-        return error_response('InternalError', str(e), 500)
-
-
 # ============================================================================
-# 8. PRODUCTION METRICS & SCADA PROXIES
+# 7. PRODUCTION METRICS & SCADA PROXIES
 # ============================================================================
 
 @api.route('/login', methods=['POST'])

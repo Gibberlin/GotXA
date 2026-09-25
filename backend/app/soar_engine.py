@@ -16,6 +16,20 @@ from typing import Optional, Dict, Any, List
 logger = logging.getLogger('soar_engine')
 logger.setLevel(logging.INFO)
 
+# Try to import SOAR-SIEM feedback integration
+try:
+    from .soar_siem_feedback import send_feedback_to_siem, sync_soar_incident_to_siem
+    FEEDBACK_AVAILABLE = True
+    logger.info("✓ SOAR-SIEM Feedback integration loaded")
+except ImportError as e:
+    FEEDBACK_AVAILABLE = False
+    logger.warning(f"SOAR-SIEM Feedback not available: {e}")
+    # Dummy functions so code doesn't break
+    def send_feedback_to_siem(*args, **kwargs):
+        pass
+    def sync_soar_incident_to_siem(*args, **kwargs):
+        pass
+
 # Rule to Playbook Action mapping
 # Maps rule title/substring -> list of (action_type, playbook_id, description_template)
 RULE_PLAYBOOK_MAP = [
@@ -279,5 +293,52 @@ class SoarEngineDaemon:
                         result_detail=outputs.get('summary', desc),
                         execution_id=exec_id
                     )
+                    
+                    # === SEND FEEDBACK TO SIEM VIA API ENDPOINTS ===
+                    # NOW INSIDE THE LOOP - ALL VARIABLES ARE DEFINED
+                    if FEEDBACK_AVAILABLE:
+                        try:
+                            # Update alert status to 'investigating' in SIEM
+                            send_feedback_to_siem(
+                                feedback_type='alert_status_update',
+                                data={
+                                    'alert_id': str(alert.id),
+                                    'status': 'investigating',
+                                    'action_type': action_type,
+                                    'notes': f'SOAR automation executed: {desc}'
+                                }
+                            )
+                            logger.info(f"✓ Alert {alert.id} status updated in SIEM")
+                            
+                            # Report SOAR action completion to SIEM
+                            send_feedback_to_siem(
+                                feedback_type='soar_action_completed',
+                                data={
+                                    'alert_id': str(alert.id),
+                                    'action_type': action_type,
+                                    'playbook_id': playbook_id,
+                                    'execution_id': exec_id,
+                                    'result': 'success',
+                                    'detail': f'Playbook {playbook_id} executed: {outputs.get("summary", desc)}'
+                                }
+                            )
+                            logger.info(f"✓ SOAR action {exec_id} reported to SIEM")
+                            
+                            # If incident was created from this alert, sync it to SIEM
+                            if alert.incident_id:
+                                sync_soar_incident_to_siem(
+                                    incident_id=str(alert.incident_id),
+                                    incident_data={
+                                        'title': f'Automated Response: {alert.title}',
+                                        'status': 'investigating',
+                                        'severity': alert.severity,
+                                        'created_at': datetime.utcnow().isoformat(),
+                                        'playbooks_executed': [playbook_id],
+                                        'containment_status': 'in_progress'
+                                    }
+                                )
+                                logger.info(f"✓ Incident {alert.incident_id} synced to SIEM")
+                        except Exception as e:
+                            logger.warning(f"SOAR feedback to SIEM failed (non-blocking): {str(e)}")
 
                 db.session.commit()
