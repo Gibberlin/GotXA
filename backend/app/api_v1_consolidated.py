@@ -17,7 +17,7 @@ from app.models import (
     JITSession, Setting, SettingChange, User, AuditEvent, Report
 )
 from app.auth import (
-    authenticate, require_permission, error_response, success_response
+    authenticate, require_permission, error_response, success_response, list_response
 )
 from app.api_v1 import format_timestamp, format_time_display, format_human_time
 
@@ -635,3 +635,75 @@ def scada_gateway_proxy(subpath):
                 ]
             }), 200
         return jsonify({'error': f'SCADA gateway service unavailable: {e}'}), 503
+
+# ============================================================================
+# RESTORED ENDPOINTS - JIT SESSIONS & INCIDENTS
+# ============================================================================
+
+@api.route('/access/jit-sessions', methods=['GET'])
+@authenticate
+def get_jit_sessions_consolidated():
+    """List active JIT privilege sessions."""
+    try:
+        page = int(request.args.get('page', 1))
+        limit = min(int(request.args.get('limit', 25)), 100)
+        status_filter = request.args.get('status')
+        
+        query = db.session.query(JITSession)
+        if status_filter:
+            query = query.filter_by(status=status_filter)
+        
+        total = query.count()
+        items = query.offset((page - 1) * limit).limit(limit).all()
+        
+        return list_response([{'id': s.id, 'user_id': s.user_id, 'status': s.status, 'privilege_level': s.privilege_level, 'expires_at': s.expires_at.isoformat() if s.expires_at else None} for s in items], total, page, limit)
+    except Exception as e:
+        return error_response('InternalError', str(e), 500)
+
+@api.route('/access/jit-sessions', methods=['POST'])
+@authenticate
+@require_permission('access.jit_request')
+def create_jit_session_consolidated():
+    """Request temporary elevated privileges."""
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id') or g.auth_context.user_id
+        privilege_level = data.get('privilege_level', 'elevated')
+        duration_minutes = data.get('duration_minutes', 60)
+        
+        session = JITSession(
+            user_id=user_id,
+            privilege_level=privilege_level,
+            status='pending',
+            expires_at=datetime.utcnow() + timedelta(minutes=duration_minutes)
+        )
+        
+        db.session.add(session)
+        db.session.commit()
+        
+        return success_response({'id': session.id, 'status': 'pending', 'expires_at': session.expires_at.isoformat()}, 'JIT session requested', 201)
+    except Exception as e:
+        db.session.rollback()
+        return error_response('InternalError', str(e), 500)
+
+@api.route('/incidents/summary', methods=['GET'])
+@authenticate
+def get_incidents_summary_consolidated():
+    """Get incident workflow summary."""
+    try:
+        incidents = db.session.query(Incident).all()
+        
+        open_count = sum(1 for i in incidents if i.status == 'open')
+        closed_count = sum(1 for i in incidents if i.status == 'closed')
+        investigating_count = sum(1 for i in incidents if i.status == 'investigating')
+        
+        return success_response({
+            'total_incidents': len(incidents),
+            'open': open_count,
+            'closed': closed_count,
+            'investigating': investigating_count,
+            'summary_updated': datetime.utcnow().isoformat()
+        })
+    except Exception as e:
+        return error_response('InternalError', str(e), 500)
+

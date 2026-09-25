@@ -768,3 +768,58 @@ def update_settings():
     except Exception as e:
         db.session.rollback()
         return error_response('InternalError', str(e), 500)
+
+# ============================================================================
+# RESTORED ENDPOINTS - ALERT ACTIONS
+# ============================================================================
+
+@api.route('/alerts/<alert_id>/suppress', methods=['POST'])
+@authenticate
+@require_permission('alerts.suppress')
+def suppress_alert_detail(alert_id):
+    """Suppress alert for specified duration."""
+    try:
+        data = request.get_json()
+        duration_minutes = data.get('duration_minutes', 60)
+        reason = data.get('reason', 'No reason provided')
+        
+        alert = db.session.query(Alert).filter_by(id=alert_id).first()
+        if not alert:
+            return error_response('NotFound', 'Alert not found', 404)
+        
+        alert.status = 'suppressed'
+        alert.suppression_reason = reason
+        alert.suppression_scope = data.get('scope', 'single')
+        alert.suppression_expires_at = datetime.utcnow() + timedelta(minutes=duration_minutes)
+        
+        db.session.commit()
+        
+        return success_response({'alert_id': alert_id, 'status': 'suppressed', 'duration_minutes': duration_minutes, 'suppressed_until': alert.suppression_expires_at.isoformat()}, 'Alert suppressed', 200)
+    except Exception as e:
+        db.session.rollback()
+        return error_response('InternalError', str(e), 500)
+
+@api.route('/alerts/<alert_id>/status', methods=['PUT'])
+@authenticate
+@require_permission('alerts.write')
+def update_alert_status_detail(alert_id):
+    """Update alert status in workflow."""
+    try:
+        data = request.get_json()
+        new_status = data.get('status')
+        
+        if new_status not in ['open', 'acknowledged', 'resolved', 'closed', 'suppressed', 'investigating']:
+            return error_response('BadRequest', 'Invalid status', 400)
+        
+        alert = db.session.query(Alert).filter_by(id=alert_id).first()
+        if not alert:
+            return error_response('NotFound', 'Alert not found', 404)
+        
+        old_status = alert.status
+        alert.status = new_status
+        db.session.commit()
+        
+        return success_response({'alert_id': alert_id, 'old_status': old_status, 'new_status': new_status, 'updated_at': datetime.utcnow().isoformat()}, 'Status updated', 200)
+    except Exception as e:
+        db.session.rollback()
+        return error_response('InternalError', str(e), 500)

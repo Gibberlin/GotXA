@@ -19,6 +19,24 @@ from app.auth import (
 api = Blueprint('api_extended', __name__, url_prefix='/api')
 
 # ============================================================================
+# 1. DATA SOURCE METRICS
+# ============================================================================
+
+@api.route('/data-sources/metrics', methods=['GET'])
+@authenticate
+def get_data_sources_metrics_health():
+    """Get data source connector health metrics."""
+    try:
+        sources = db.session.query(LogSource).all()
+        return success_response({
+            'sources': [{'id': s.id, 'name': s.name, 'status': s.status, 'ingestion_rate': s.ingestion_rate, 'health_percentage': max(0, 100 - (s.drop_count + s.parse_error_count) / max(s.total_events_ingested, 1) * 100)} for s in sources],
+            'total_sources': len(sources),
+            'healthy_count': sum(1 for s in sources if s.status == 'healthy')
+        })
+    except Exception as e:
+        return error_response('InternalError', str(e), 500)
+
+# ============================================================================
 # 2. LOG SOURCE INGESTION METRICS
 # ============================================================================
 
@@ -78,38 +96,89 @@ def create_log_source():
         return error_response('InternalError', str(e), 500)
 
 # ============================================================================
-# 5. GLOBAL DASHBOARD METRICS
+# 3. JIT SESSION ACTIONS
 # ============================================================================
 
+@api.route('/access/jit-sessions/<session_id>/approve', methods=['POST'])
+@authenticate
+@require_permission('access.jit_approve')
+def approve_jit_session(session_id):
+    """Approve temporary JIT elevation."""
+    try:
+        session = db.session.query(JITSession).filter(
+            (JITSession.id == session_id) | (JITSession.session_id == session_id)
+        ).first()
+        
+        if not session:
+            return error_response('NotFound', 'JIT session not found', 404)
+        
+        session.status = 'approved'
+        session.approved_at = datetime.utcnow()
+        session.approved_by_id = g.auth_context.user_id
+        db.session.commit()
+        
+        return success_response({
+            'session_id': session.id,
+            'status': 'approved',
+            'expires_at': session.expires_at.isoformat() if session.expires_at else None
+        }, 'JIT session approved', 200)
+    except Exception as e:
+        db.session.rollback()
+        return error_response('InternalError', str(e), 500)
+
+@api.route('/access/jit-sessions/<session_id>/revoke', methods=['POST'])
+@authenticate
+@require_permission('access.jit_revoke')
+def revoke_jit_session(session_id):
+    """Revoke JIT elevation early."""
+    try:
+        session = db.session.query(JITSession).filter(
+            (JITSession.id == session_id) | (JITSession.session_id == session_id)
+        ).first()
+        
+        if not session:
+            return error_response('NotFound', 'JIT session not found', 404)
+        
+        session.status = 'revoked'
+        session.revoked_at = datetime.utcnow()
+        db.session.commit()
+        
+        return success_response({
+            'session_id': session.id,
+            'status': 'revoked'
+        }, 'JIT session revoked', 200)
+    except Exception as e:
+        db.session.rollback()
+        return error_response('InternalError', str(e), 500)
+
+# ============================================================================
+# 4. GLOBAL DASHBOARD METRICS
+# ============================================================================
+
+@api.route('/overview/metrics', methods=['GET'])
 @authenticate
 def get_overview_metrics():
     """Get aggregated KPI metrics for main dashboard."""
     try:
-        # Current ingestion rate (events/min)
         recent_sources = db.session.query(LogSource).filter(
             LogSource.updated_at > datetime.utcnow() - timedelta(minutes=5)
         ).all()
         
         current_ingestion_rate = sum(s.ingestion_rate for s in recent_sources)
         
-        # Source health
         all_sources = db.session.query(LogSource).all()
         healthy_sources = sum(1 for s in all_sources if s.status == 'healthy')
         total_sources = len(all_sources)
         
-        # SLA at risk (incidents not closed within SLA)
-        # SLA = 24 hours to close
         sla_at_risk = db.session.query(Incident).filter(
             Incident.status != 'closed',
             Incident.created_at < datetime.utcnow() - timedelta(hours=24)
         ).count()
         
-        # Threat feed status
         threat_feeds = db.session.query(ThreatIntelligenceFeed).all()
         active_feeds = sum(1 for f in threat_feeds if f.status == 'active')
         total_indicators = sum(f.indicators_count for f in threat_feeds)
         
-        # JIT sessions
         active_jit = db.session.query(JITSession).filter(
             JITSession.status == 'approved',
             JITSession.expires_at > datetime.utcnow()

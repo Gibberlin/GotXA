@@ -740,3 +740,36 @@ def scada_control():
     }), 200
 
 
+
+# ============================================================================
+# RESTORED ENDPOINTS - INCIDENTS & ALERTS DETAIL
+# ============================================================================
+
+@api.route('/incidents/<incident_id>', methods=['GET'])
+@authenticate
+def get_incident_detail(incident_id):
+    """Get incident investigation details."""
+    try:
+        incident = db.session.query(Incident).filter_by(id=incident_id).first()
+        if not incident:
+            return error_response('NotFound', 'Incident not found', 404)
+        
+        tasks = db.session.query(Task).filter_by(incident_id=incident_id).all()
+        related_alerts = db.session.query(Alert).filter_by(incident_id=incident_id).all()
+        
+        return success_response({
+            'id': incident.id,
+            'incident_id': incident.incident_id,
+            'title': incident.title,
+            'description': incident.description,
+            'severity': incident.severity,
+            'status': incident.status,
+            'assigned_to_id': incident.assigned_to_id,
+            'created_at': incident.created_at.isoformat() if incident.created_at else None,
+            'tasks_count': len(tasks),
+            'alerts_count': len(related_alerts),
+            'tasks': [{'id': t.id, 'title': t.title, 'status': t.status, 'assigned_to': t.assigned_to_id} for t in tasks],
+            'related_alerts': [{'id': a.id, 'alert_id': a.alert_id, 'title': a.title, 'severity': a.severity} for a in related_alerts]
+        })
+    except Exception as e:
+        return error_response('InternalError', str(e), 500)
