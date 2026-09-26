@@ -34,7 +34,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-SIEM_INGEST_URL = os.getenv('SIEM_INGEST_URL', 'http://backend:5000/api/ingest/events')
+SIEM_INGEST_URL = os.getenv('SIEM_INGEST_URL') or os.getenv('SIEM_INGRESS_URL') or 'http://backend:5000/api/ingest/events'
 COLLECTOR_TOKEN = os.getenv('COLLECTOR_INGEST_TOKEN', '')
 PLC_REFINERY_1_HOST = os.getenv('PLC_REFINERY_1_HOST', 'ot-plc-refinery-1')
 PLC_REFINERY_2_HOST = os.getenv('PLC_REFINERY_2_HOST', 'ot-plc-refinery-2')
@@ -57,6 +57,8 @@ class SiemPublisher:
 
     def publish_event(self, event_type, host, message, level='info', device_meta=None, extra_meta=None):
         """Enqueue an event for asynchronous parallel transmission to SIEM."""
+        device_meta = device_meta or {}
+        extra_meta = extra_meta or {}
         timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
         event = {
             'timestamp': timestamp,
@@ -255,8 +257,9 @@ DEFAULT_MACHINES = {
             {'command': 'set_temperature', 'label': 'Temperature setpoint', 'min': 150, 'max': 220, 'unit': '°C', 'reg_addr': 0},
             {'command': 'set_heater_enabled', 'label': 'Heater enabled', 'type': 'toggle'},
             {'command': 'emergency_stop', 'label': 'Emergency stop', 'type': 'action'},
+            {'command': 'reset_emergency_stop', 'label': 'Reset emergency stop', 'type': 'action'},
         ],
-        'control_state': {'heater_enabled': True}
+        'control_state': {'heater_enabled': True, 'emergency_stopped': False}
     },
     'refinery-2': {
         'name': 'Refinery 2 Flow Unit',
@@ -271,8 +274,9 @@ DEFAULT_MACHINES = {
             {'command': 'set_flow_rate', 'label': 'Flow-rate setpoint', 'min': 20, 'max': 100, 'unit': 'L/min', 'reg_addr': 2},
             {'command': 'set_pump_enabled', 'label': 'Pump enabled', 'type': 'toggle'},
             {'command': 'emergency_stop', 'label': 'Emergency stop', 'type': 'action'},
+            {'command': 'reset_emergency_stop', 'label': 'Reset emergency stop', 'type': 'action'},
         ],
-        'control_state': {'pump_enabled': True}
+        'control_state': {'pump_enabled': True, 'emergency_stopped': False}
     },
 }
 
@@ -383,14 +387,17 @@ class ModbusPoller:
                                 logger.warning(f"Error reading {machine_id} register {reg_name} (addr {addr})")
 
                         with self.lock:
-                            status = 'error' if has_error else 'online'
+                            is_stopped = self.machines.get(machine_id, {}).get('control_state', {}).get('emergency_stopped', False)
+                            status = 'stopped' if is_stopped else ('error' if has_error else 'online')
                             self.data[key].update(updates)
                             self.data[key]['last_update'] = timestamp
                             self.data[key]['status'] = status
+                            self.data[key]['emergency_stopped'] = is_stopped
 
                             self.data[machine_id].update(updates)
                             self.data[machine_id]['last_update'] = timestamp
                             self.data[machine_id]['status'] = status
+                            self.data[machine_id]['emergency_stopped'] = is_stopped
 
                         await asyncio.sleep(poll_interval)
 
@@ -401,7 +408,7 @@ class ModbusPoller:
                             self.data[machine_id]['status'] = 'error'
                         break
 
-                await client.close()
+                client.close()
 
             except Exception as e:
                 logger.debug(f"PLC {machine_id} connection error: {e}")
@@ -422,7 +429,11 @@ poller = ModbusPoller()
 def machine_status(machine_id):
     data = poller.get_data()
     key = machine_id.replace('-', '_')
-    return data.get(key) or data.get(machine_id) or {'status': 'offline', 'last_update': None}
+    res = data.get(key) or data.get(machine_id) or {'status': 'offline', 'last_update': None}
+    if poller.machines.get(machine_id, {}).get('control_state', {}).get('emergency_stopped'):
+        res['status'] = 'stopped'
+        res['emergency_stopped'] = True
+    return res
 
 def refresh_alarms():
     """Inspect all registered machine telemetry against configured thresholds."""
@@ -484,7 +495,7 @@ async def write_machine_register(machine_id, reg_addr, value):
         if result.isError():
             raise RuntimeError('PLC rejected the register write')
     finally:
-        await client.close()
+        client.close()
 
 def record_command(machine_id, command, value, reason, status, rejection_reason=None):
     command_id = str(uuid.uuid4())
@@ -554,11 +565,13 @@ def list_machines():
     refresh_alarms()
     items = []
     for machine_id, definition in poller.machines.items():
+        st = machine_status(machine_id)
         items.append({
             'id': machine_id,
             'name': definition.get('name', machine_id),
             'controls': definition.get('controls', []),
-            'status': machine_status(machine_id),
+            'status': st.get('status', 'online'),
+            'telemetry': st,
             'control_state': definition.get('control_state', {})
         })
     return jsonify({'items': items})
@@ -627,10 +640,27 @@ def submit_command(machine_id):
                 return jsonify({'error': {'code': 'BadRequest', 'message': 'Toggle value must be boolean'}}), 400
             with CONTROL_LOCK:
                 machine_def.setdefault('control_state', {})[command] = value
+                clean_key = command.replace('set_', '')
+                machine_def.setdefault('control_state', {})[clean_key] = value
         elif command == 'emergency_stop':
             asyncio.run(write_machine_register(machine_id, 0, 0))
             with CONTROL_LOCK:
                 machine_def.setdefault('control_state', {})['emergency_stopped'] = True
+            with poller.lock:
+                key = machine_id.replace('-', '_')
+                poller.data[key]['status'] = 'stopped'
+                poller.data[key]['emergency_stopped'] = True
+                poller.data[machine_id]['status'] = 'stopped'
+                poller.data[machine_id]['emergency_stopped'] = True
+        elif command == 'reset_emergency_stop':
+            with CONTROL_LOCK:
+                machine_def.setdefault('control_state', {})['emergency_stopped'] = False
+            with poller.lock:
+                key = machine_id.replace('-', '_')
+                poller.data[key]['status'] = 'online'
+                poller.data[key]['emergency_stopped'] = False
+                poller.data[machine_id]['status'] = 'online'
+                poller.data[machine_id]['emergency_stopped'] = False
 
         entry = record_command(machine_id, command, value, reason, 'applied')
         return jsonify(entry), 202
@@ -638,6 +668,13 @@ def submit_command(machine_id):
         logger.error(f"SCADA command error: {exc}")
         entry = record_command(machine_id, command, value, reason, 'rejected', str(exc))
         return jsonify(entry), 503
+
+@app.route('/api/control', methods=['POST'])
+def scada_generic_control():
+    """Generic control endpoint compatible with backend proxy."""
+    body = request.get_json(silent=True) or {}
+    machine_id = body.get('machine_id', 'refinery-1')
+    return submit_command(machine_id)
 
 @app.route('/api/scada/commands/<command_id>', methods=['GET'])
 def get_command(command_id):

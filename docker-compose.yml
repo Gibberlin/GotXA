@@ -185,6 +185,56 @@ services:
           cpus: '0.25'
           memory: 256M
 
+  ot-plc-refinery-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.plc
+    container_name: ot-plc-refinery-1
+    environment:
+      TZ: ${TZ:-Asia/Kolkata}
+      AGENT_NAME: ot-plc-refinery-1
+      MODBUS_PORT: "5003"
+    networks:
+      - gotxa-net
+    volumes:
+      - ./logs:/logs
+    expose:
+      - "5003"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  ot-plc-refinery-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.plc
+    container_name: ot-plc-refinery-2
+    environment:
+      TZ: ${TZ:-Asia/Kolkata}
+      AGENT_NAME: ot-plc-refinery-2
+      MODBUS_PORT: "5004"
+    networks:
+      - gotxa-net
+    volumes:
+      - ./logs:/logs
+    expose:
+      - "5004"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
   scada-gateway:
     build:
       context: .
@@ -193,12 +243,17 @@ services:
     environment:
       TZ: ${TZ:-Asia/Kolkata}
       SIEM_INGRESS_URL: http://backend:5000/api/ingest/events
+      SIEM_INGEST_URL: http://backend:5000/api/ingest/events
       COLLECTOR_INGEST_TOKEN: ${COLLECTOR_INGEST_TOKEN:?Set COLLECTOR_INGEST_TOKEN in .env}
       PLC_REFINERY_1_HOST: ${PLC_REFINERY_1_HOST:-ot-plc-refinery-1}
       PLC_REFINERY_2_HOST: ${PLC_REFINERY_2_HOST:-ot-plc-refinery-2}
     depends_on:
       backend:
         condition: service_healthy
+      ot-plc-refinery-1:
+        condition: service_started
+      ot-plc-refinery-2:
+        condition: service_started
     networks:
       - gotxa-net
     volumes:
@@ -214,6 +269,7 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
+
 
  
 

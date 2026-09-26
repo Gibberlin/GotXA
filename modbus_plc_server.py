@@ -169,14 +169,16 @@ def simulate(context):
     while True:
         try:
             time.sleep(2)
-            slave = context.slaves[1]
+            slave = context[1]
             
             for reg_name, reg_addr in REGISTERS.items():
                 idx = reg_addr - 40001
                 current = slave.getValues(3, idx, 1)[0]
                 
-                # Apply natural process fluctuations
-                if 'temperature' in reg_name:
+                # Apply natural process fluctuations if running, keep at 0 if stopped
+                if current <= 50:
+                    new_val = 0
+                elif 'temperature' in reg_name:
                     delta = (random.random() - 0.48) * 4.0
                     new_val = max(1500, min(2300, int(current + delta)))
                 elif 'pressure' in reg_name:

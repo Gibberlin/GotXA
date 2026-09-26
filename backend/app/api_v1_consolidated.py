@@ -564,10 +564,9 @@ def modbus_proxy():
         response = requests.get('http://ot-scada-gateway:5002/api/modbus', timeout=5)
         return jsonify(response.json()), response.status_code
     except Exception as e:
-        # Fallback simulation values if gateway container is offline locally
         return jsonify({
-            "refinery_1": {"temperature": 182.4, "pressure": 51.2, "status": "online", "last_update": datetime.utcnow().isoformat()},
-            "refinery_2": {"flow_rate": 54.8, "temperature": 174.5, "status": "online", "last_update": datetime.utcnow().isoformat()}
+            "refinery_1": {"temperature": 0.0, "pressure": 0.0, "status": "offline", "error": str(e)},
+            "refinery_2": {"flow_rate": 0.0, "temperature": 0.0, "status": "offline", "error": str(e)}
         }), 200
 
 
@@ -579,7 +578,7 @@ def modbus_refinery1_proxy():
         response = requests.get('http://ot-scada-gateway:5002/api/modbus/refinery-1', timeout=5)
         return jsonify(response.json()), response.status_code
     except Exception as e:
-        return jsonify({"temperature": 182.4, "pressure": 51.2, "status": "online"}), 200
+        return jsonify({"temperature": 0.0, "pressure": 0.0, "status": "offline", "error": str(e)}), 200
 
 
 @api.route('/modbus/refinery-2', methods=['GET'])
@@ -590,7 +589,7 @@ def modbus_refinery2_proxy():
         response = requests.get('http://ot-scada-gateway:5002/api/modbus/refinery-2', timeout=5)
         return jsonify(response.json()), response.status_code
     except Exception as e:
-        return jsonify({"flow_rate": 54.8, "temperature": 174.5, "status": "online"}), 200
+        return jsonify({"flow_rate": 0.0, "temperature": 0.0, "status": "offline", "error": str(e)}), 200
 
 
 @api.route('/saved-views', methods=['GET', 'POST'])
@@ -630,8 +629,8 @@ def scada_gateway_proxy(subpath):
         elif 'machines' in subpath:
             return jsonify({
                 'items': [
-                    {'id': 'refinery-1', 'name': 'Refinery Unit 1 (Heater)', 'status': 'nominal'},
-                    {'id': 'refinery-2', 'name': 'Refinery Unit 2 (Flow)', 'status': 'nominal'}
+                    {'id': 'refinery-1', 'name': 'Refinery Unit 1 (Heater)', 'status': 'offline', 'error': str(e)},
+                    {'id': 'refinery-2', 'name': 'Refinery Unit 2 (Flow)', 'status': 'offline', 'error': str(e)}
                 ]
             }), 200
         return jsonify({'error': f'SCADA gateway service unavailable: {e}'}), 503

@@ -212,15 +212,7 @@ class SystemTelemetryDaemon(threading.Thread):
                 self._counter += 1
                 metrics = get_real_system_metrics()
                 
-                # 1. SCADA Gateway Telemetry
-                if self._counter % 2 == 0:
-                    record_telemetry_event(
-                        self.app,
-                        host='ot-scada-gateway',
-                        level='INFO',
-                        message=f"SCADA Modbus polling cycle complete | Event batch verified | CPU: {metrics['cpu_percent']}%",
-                        details={'type': 'scada_gateway_heartbeat', 'host': 'ot-scada-gateway', **metrics}
-                    )
+                # SCADA gateway telemetry is published authentically by scada_gateway.py, so synthetic injection is disabled
 
                 # 2. Database Health & Connection Pool Metrics
                 if self._counter % 3 == 0:

@@ -145,6 +145,28 @@ def process_event_batch(events):
                 raw_event=event,
             )
             db.session.add(sec_event)
+
+            # Update machine operational status for emergency stop / reset events
+            is_e_stop = 'emergency_stop' in msg_str.lower() or event.get('command') == 'emergency_stop' or event.get('action') == 'emergency_stop'
+            is_reset = event.get('command') == 'reset_emergency_stop' or 'reset_emergency_stop' in msg_str.lower()
+            if is_e_stop:
+                if device:
+                    meta = dict(device.metadata_json or {})
+                    meta['operational_status'] = 'stopped'
+                    meta['emergency_stopped'] = True
+                    device.metadata_json = meta
+                source = db.session.query(LogSource).filter_by(name=host_str).first()
+                if source:
+                    source.status = 'stopped'
+            elif is_reset:
+                if device:
+                    meta = dict(device.metadata_json or {})
+                    meta['operational_status'] = 'online'
+                    meta['emergency_stopped'] = False
+                    device.metadata_json = meta
+                source = db.session.query(LogSource).filter_by(name=host_str).first()
+                if source:
+                    source.status = 'healthy'
             
             # If a new uncataloged machine is discovered, log a notification event and alert
             if is_new and device:
@@ -426,13 +448,17 @@ def update_device_trust(device_id):
     return jsonify(_device_payload(device))
 
 def _device_payload(device):
+    meta = device.metadata_json or {}
+    op_status = meta.get('operational_status')
     return {
         'id': device.id, 'hostname': device.hostname, 'ip_address': device.ip_address,
         'mac_address': device.mac_address, 'device_type': device.device_type,
         'manufacturer': device.manufacturer, 'model': device.model,
         'os_version': device.os_version, 'serial_number': device.serial_number,
         'trust_state': device.trust_state,
+        'status': op_status or ('healthy' if device.trust_state == 'trusted' else 'untrusted'),
         'first_seen_at': device.first_seen_at.isoformat() if device.first_seen_at else None,
         'last_seen_at': device.last_seen_at.isoformat() if device.last_seen_at else None,
+        'metadata': meta
     }
 
