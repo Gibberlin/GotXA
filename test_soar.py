@@ -138,9 +138,9 @@ def test_critical_system_error():
     
     print("[*] Simulating a fatal kernel crash on corporate-portal-agent...")
     payload = {
-        "message": "FATAL: kernel panic - out of memory, killing process group",
+        "message": "Critical System Error: FATAL: kernel panic - out of memory, killing process group",
         "host": "corp-portal-agent",
-        "level": "ERROR"
+        "level": "CRITICAL"
     }
     
     r = requests.post(f"{SIEM_URL}/logs/ingest", json=payload, headers=INGEST_HEADERS)
@@ -209,9 +209,10 @@ def test_network_anomaly():
     
     print("[*] Ingesting NMAP port scanner logs from corporate workstation...")
     payload = {
-        "message": "NMAP port scan activity detected from source IP 192.168.1.205",
+        "message": "Network Anomaly Detected: NMAP port scan activity detected from source IP 192.168.1.205",
         "host": "corp-workstation-agent",
-        "level": "ERROR"
+        "src_ip": "192.168.1.205",
+        "level": "HIGH"
     }
     
     r = requests.post(f"{SIEM_URL}/logs/ingest", json=payload, headers=INGEST_HEADERS)
