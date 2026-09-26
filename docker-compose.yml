@@ -157,7 +157,6 @@ services:
       context: .
       dockerfile: Dockerfile.collector
     container_name: gotxa-log-collector
-    profiles: ["production-logging"]
     environment:
       TZ: ${TZ:-Asia/Kolkata}
       SIEM_INGRESS_URL: http://backend:5000/api/ingest/events
@@ -187,7 +186,6 @@ services:
       context: .
       dockerfile: Dockerfile.scada
     container_name: ot-scada-gateway
-    profiles: ["scada"]
     environment:
       TZ: ${TZ:-Asia/Kolkata}
       SIEM_INGRESS_URL: http://backend:5000/api/ingest/events
@@ -340,6 +338,44 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
+
+
+  # ============================================================================
+  # RED TEAM / PENETRATION TESTING MACHINE
+  # ============================================================================
+
+  new-machine:
+    build:
+      context: ./New_Machine
+      dockerfile: Dockerfile
+    container_name: New_Machine
+    stdin_open: true
+    tty: true
+    networks:
+      - gotxa-net
+    depends_on:
+      - backend
+      - siem-postgres
+      - api-gateway
+    environment:
+      TZ: ${TZ:-Asia/Kolkata}
+    volumes:
+      - ./New_Machine:/workspace
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_ADMIN
+    command: /bin/bash
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
 
 # ============================================================================
 # VOLUMES
