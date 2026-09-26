@@ -1,5 +1,6 @@
-Testing API Endpoints
-====================
+#!/usr/bin/env bash
+# Testing API Endpoints
+# ====================
 
 # Get Alerts
 curl -s "http://localhost:5000/api/alerts" -H "X-User-ID: admin" | jq '.data | length'

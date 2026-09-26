@@ -24,6 +24,27 @@ import os
 SIEM_URL = os.getenv("SIEM_URL", "http://localhost:5000")
 PORTAL_URL = os.getenv("PORTAL_URL", "http://localhost:5000")
 
+# Load collector ingestion token from environment or .env file
+COLLECTOR_TOKEN = os.getenv("COLLECTOR_INGEST_TOKEN")
+if not COLLECTOR_TOKEN:
+    try:
+        env_path = os.path.join(os.path.dirname(__file__), ".env")
+        if os.path.exists(env_path):
+            with open(env_path, "r") as f:
+                for line in f:
+                    if line.strip().startswith("COLLECTOR_INGEST_TOKEN="):
+                        COLLECTOR_TOKEN = line.strip().split("=", 1)[1].strip('"\'')
+                        break
+    except Exception:
+        pass
+if not COLLECTOR_TOKEN:
+    COLLECTOR_TOKEN = "gotxa_dev_collector_token_change_me"
+
+INGEST_HEADERS = {
+    "X-Collector-Token": COLLECTOR_TOKEN,
+    "Content-Type": "application/json"
+}
+
 # ANSI Terminal Colors
 GREEN = "\033[92m"
 RED = "\033[91m"
@@ -122,7 +143,7 @@ def test_critical_system_error():
         "level": "ERROR"
     }
     
-    r = requests.post(f"{SIEM_URL}/logs/ingest", json=payload)
+    r = requests.post(f"{SIEM_URL}/logs/ingest", json=payload, headers=INGEST_HEADERS)
     if r.status_code != 200:
         print(f"  {RED}Failed to send log payload (Status {r.status_code}){RESET}\n")
         return False
@@ -152,7 +173,9 @@ def test_privilege_escalation():
         print("[*] Restoring corporate portal network connection...")
         try:
             import subprocess
-            subprocess.run(["docker", "network", "connect", "gotxa_corporate-net", "corp-portal-agent"], capture_output=True)
+            for net in ["gotxa_gotxa-net", "gotxa-net"]:
+                for container in ["corp-portal-frontend", "SoC"]:
+                    subprocess.run(["docker", "network", "connect", net, container], capture_output=True)
             print(f"  {GREEN}[+] Network connection restored.{RESET}\n")
         except Exception as e:
             print(f"  {RED}Failed to restore network connection: {e}{RESET}\n")
@@ -191,7 +214,7 @@ def test_network_anomaly():
         "level": "ERROR"
     }
     
-    r = requests.post(f"{SIEM_URL}/logs/ingest", json=payload)
+    r = requests.post(f"{SIEM_URL}/logs/ingest", json=payload, headers=INGEST_HEADERS)
     if r.status_code != 200:
         print(f"  {RED}Failed to send log payload (Status {r.status_code}){RESET}\n")
         return False
@@ -215,7 +238,7 @@ def test_warning_monitoring():
         "level": "WARN"
     }
     
-    r = requests.post(f"{SIEM_URL}/logs/ingest", json=payload)
+    r = requests.post(f"{SIEM_URL}/logs/ingest", json=payload, headers=INGEST_HEADERS)
     if r.status_code != 200:
         print(f"  {RED}Failed to send log payload (Status {r.status_code}){RESET}\n")
         return False

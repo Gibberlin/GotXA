@@ -1,4 +1,55 @@
-## API Architecture Rules & Standards
+# Project Rules & Operational Governance
+
+> **🚨 CRITICAL DIRECTIVE FOR ALL AI AGENTS & DEVELOPERS:**  
+> **DO NOT MODIFY, EDIT, REFACTOR, RENAME, OR DELETE ANY FILE IN THIS REPOSITORY WITHOUT EXPLICIT, UNAMBIGUOUS USER CONSENT.**  
+> **READ-ONLY INSPECTION AND DIAGNOSTICS ARE THE DEFAULT OPERATIONAL MODE AT ALL TIMES.**
+
+---
+
+## 🛡️ PART 1: ZERO UNWANTED EDITS POLICY (MANDATORY)
+
+### 1. Default Operational Mode: Strict Read-Only
+- **No Unprompted Modifications:** Under no circumstances should any AI assistant, automated agent, or developer modify, rewrite, refactor, reorganize, or format any file in this repository unless the user has explicitly requested changes to that specific file and scope.
+- **Diagnostics ≠ Edits:** Requests to "check", "inspect", "debug", "investigate", "explain", "review", or "find" must be handled strictly as read-only operations. Do not apply "fixes" without explicit authorization.
+- **No Speculative Changes:** Never anticipate future requirements by adding unsolicited boilerplate, moving code around, changing project structures, or cleaning up working code.
+- **Maintain Existing State:** If code works, is in progress, or contains temporary comments/breakpoints, leave it intact. Never assume code is "messy" and needs reformatting.
+
+### 2. Protocol for Requesting & Making Changes
+Whenever a modification is proposed or requested:
+1. **Explain the Purpose:** State clearly what needs to be changed and why.
+2. **Present the Diff / Scope:** Detail the exact files, functions, or lines that will be touched.
+3. **Wait for Explicit Approval:** Receive explicit confirmation (e.g., "Yes, proceed with the edit") before touching or creating any file.
+4. **Minimal Atomic Edits:** Make only the minimal surgical changes necessary. Do not modify adjacent or unrelated code.
+5. **Preserve Documentation & Comments:** Never delete or alter existing comments, docstrings, or developer notes.
+
+### 3. High-Security & Mission-Critical Files (Strict Lockdown)
+The following files and directories are mission-critical. They must never be edited, deleted, or overwritten without explicit user approval:
+- **SCADA & ICS Control Systems:**
+  - `scada_gateway.py`
+  - `modbus_plc_server.py`
+  - `Dockerfile.scada`
+  - `New_Machine/`
+- **Configuration & Secrets:**
+  - `.env`, `.env.example`, any credentials, tokens, or network configuration files.
+- **Infrastructure & Containerization:**
+  - `docker-compose.yml`
+  - `Dockerfile.collector`
+  - `Dockerfile.scada`
+- **Data Ingestion & Collectors:**
+  - `log_collector.py`
+  - Ingestion endpoints and service logs.
+- **Backend Core & Database:**
+  - `backend/app/models.py`, `backend/app/db.py`, and database migration files.
+
+### 4. Prohibited Destructive Actions
+- **Destructive Git Commands:** `git reset --hard`, `git clean -fd`, `git checkout -- .`, or force pushing are strictly forbidden.
+- **File Deletions / Purges:** Never delete or truncate files without explicit instructions.
+- **Silent Deprecations:** Never remove API routes, functions, or database fields without formal deprecation and verification.
+- **Dependency Mutability:** Never run global `pip install` or overwrite `requirements.txt` unless explicitly asked.
+
+---
+
+## 📐 PART 2: API ARCHITECTURE RULES & STANDARDS
 
 **Last Updated:** 2026-09-25  
 **Status:** ACTIVE - Prevents further degradation  
@@ -6,9 +57,9 @@
 
 ---
 
-## 🚨 CRITICAL ISSUES FOUND
+### 🚨 CRITICAL ISSUES FOUND
 
-### 1. Duplicate Endpoints (9 DUPLICATES FOUND)
+#### 1. Duplicate Endpoints (9 DUPLICATES FOUND)
 
 These endpoints are defined in MULTIPLE files - this must stop:
 
@@ -26,9 +77,9 @@ These endpoints are defined in MULTIPLE files - this must stop:
 
 ---
 
-## 📋 CONSOLIDATION PLAN
+### 📋 CONSOLIDATION PLAN
 
-### Phase 1: Remove Duplicates (IMMEDIATE)
+#### Phase 1: Remove Duplicates (IMMEDIATE)
 These must be deleted to reduce load:
 
 **api_v1_extended.py - REMOVE THESE:**
@@ -66,11 +117,11 @@ These must be deleted to reduce load:
 
 ---
 
-### Phase 2: Implement Batch Endpoints (OPTIMIZATION)
+#### Phase 2: Implement Batch Endpoints (OPTIMIZATION)
 
 Replace 3-5 separate calls with 1 consolidated endpoint:
 
-#### 2A. Alert Operations Consolidation
+##### 2A. Alert Operations Consolidation
 ```
 NEW ENDPOINT: POST /api/alerts/batch-operations
 
@@ -92,7 +143,7 @@ With ONE call:
 BENEFIT: 66% fewer requests, 66% less connection pool load
 ```
 
-#### 2B. Incident Operations Consolidation
+##### 2B. Incident Operations Consolidation
 ```
 NEW ENDPOINT: POST /api/incidents/<id>/batch-update
 
@@ -114,7 +165,7 @@ With ONE call:
 BENEFIT: 66% fewer requests, 66% less connection pool load
 ```
 
-#### 2C. JIT Access Consolidation
+##### 2C. JIT Access Consolidation
 ```
 NEW ENDPOINT: POST /api/access/jit-sessions/batch-action
 
@@ -134,7 +185,7 @@ With ONE call:
 BENEFIT: 50% fewer requests
 ```
 
-#### 2D. Database Operations Consolidation
+##### 2D. Database Operations Consolidation
 ```
 NEW ENDPOINT: POST /api/db/batch-operations
 
@@ -160,9 +211,9 @@ BENEFIT: 80% fewer requests, 80% less connection pool load
 
 ---
 
-## 📐 ROUTING RULES (MUST FOLLOW)
+### 📐 ROUTING RULES (MUST FOLLOW)
 
-### Rule 1: Single Responsibility Per Blueprint
+#### Rule 1: Single Responsibility Per Blueprint
 ```
 ✅ ALLOWED:
   - api_v1_actions.py: Alert & Incident actions only
@@ -180,7 +231,7 @@ BENEFIT: 80% fewer requests, 80% less connection pool load
   - api_v1.py + api_v1_consolidated.py doing same thing
 ```
 
-### Rule 2: Primary File Ownership
+#### Rule 2: Primary File Ownership
 ```
 Alert Management → api_v1_actions.py (PRIMARY)
 Incident Management → api_v1_actions.py (PRIMARY)
@@ -191,7 +242,7 @@ Database → api_v1_db.py (PRIMARY)
 Ingestion → api_ingestion.py (PRIMARY)
 ```
 
-### Rule 3: No Endpoint Migration Without Deprecation
+#### Rule 3: No Endpoint Migration Without Deprecation
 ```
 PROCESS:
   1. Add @deprecated() decorator to old endpoint
@@ -206,7 +257,7 @@ FORBIDDEN:
   ❌ Breaking client integrations silently
 ```
 
-### Rule 4: URL Prefix Consistency
+#### Rule 4: URL Prefix Consistency
 ```
 ✅ MUST USE:
   - /api/...           (All main endpoints)
@@ -220,7 +271,7 @@ FORBIDDEN:
   - /query             (Should be /api/db/query)
 ```
 
-### Rule 5: Batch Operations Naming
+#### Rule 5: Batch Operations Naming
 ```
 ✅ REQUIRED PATTERN:
   POST /api/<resource>/batch-operations
@@ -237,9 +288,9 @@ FORBIDDEN:
 
 ---
 
-## 🔒 ENFORCEMENT RULES
+### 🔒 ENFORCEMENT RULES
 
-### MUST NOT HAPPEN:
+#### MUST NOT HAPPEN:
 ```
 1. ❌ Adding duplicate endpoints
    ✅ Check all api*.py files before adding new endpoint
@@ -260,7 +311,7 @@ FORBIDDEN:
    ✅ Document every endpoint before merging
 ```
 
-### MUST HAPPEN BEFORE MERGE:
+#### MUST HAPPEN BEFORE MERGE:
 ```
 1. ✅ Verify endpoint doesn't exist elsewhere
    Command: grep -r "@api.route('/<path>'" backend/app/api*.py
@@ -282,9 +333,9 @@ FORBIDDEN:
 
 ---
 
-## 📊 LOAD OPTIMIZATION METRICS
+### 📊 LOAD OPTIMIZATION METRICS
 
-### Before Consolidation:
+#### Before Consolidation:
 ```
 Connection Pool Load: 100% (3-5x per operation)
 Response Time: 150-300ms (cumulative)
@@ -293,7 +344,7 @@ Auth Checks: 3-5 per user action
 Database Connections: 3-5 per user action
 ```
 
-### After Consolidation:
+#### After Consolidation:
 ```
 Connection Pool Load: 20-30% (1x per operation)
 Response Time: 50-100ms (parallel processing)
@@ -304,9 +355,9 @@ Database Connections: 1 per user action (66-80% reduction)
 
 ---
 
-## 🚨 CRITICAL INCIDENTS TO PREVENT
+### 🚨 CRITICAL INCIDENTS TO PREVENT
 
-### Incident: Connection Pool Exhaustion
+#### Incident: Connection Pool Exhaustion
 ```
 CAUSED BY: Too many simultaneous requests
 SYMPTOM: API returns 503 or timeout
@@ -318,7 +369,7 @@ PREVENTION:
   5. Implement request queuing
 ```
 
-### Incident: Duplicate Endpoint Conflicts
+#### Incident: Duplicate Endpoint Conflicts
 ```
 CAUSED BY: Same endpoint in multiple files
 SYMPTOM: Unpredictable behavior, 404 errors
@@ -329,7 +380,7 @@ PREVENTION:
   4. Test endpoint routing
 ```
 
-### Incident: API Breaking Changes
+#### Incident: API Breaking Changes
 ```
 CAUSED BY: Moving/removing endpoints without notice
 SYMPTOM: Client applications crash
@@ -343,7 +394,7 @@ PREVENTION:
 
 ---
 
-## ✅ CHECKLIST FOR NEW ENDPOINTS
+### ✅ CHECKLIST FOR NEW ENDPOINTS
 
 Before adding ANY new endpoint, answer YES to all:
 
@@ -375,23 +426,23 @@ Before adding ANY new endpoint, answer YES to all:
 
 ---
 
-## 📅 IMMEDIATE ACTION ITEMS
+### 📅 IMMEDIATE ACTION ITEMS
 
-### This Week:
+#### This Week:
 - [ ] Remove 9 duplicate endpoints (see table above)
 - [ ] Update api_v1_extended.py (remove duplicates)
 - [ ] Update api_v1.py (remove duplicate /incidents/<id>)
 - [ ] Update api_v1_consolidated.py (remove duplicates)
 - [ ] Test all endpoints work correctly
 
-### Next Week:
+#### Next Week:
 - [ ] Implement POST /api/alerts/batch-operations
 - [ ] Implement POST /api/incidents/<id>/batch-update
 - [ ] Implement POST /api/access/jit-sessions/batch-action
 - [ ] Implement POST /api/db/batch-operations
 - [ ] Update frontend to use batch endpoints
 
-### Before Production:
+#### Before Production:
 - [ ] Remove old individual endpoints (after batch endpoint testing)
 - [ ] Update all documentation
 - [ ] Performance test (measure connection pool load)
@@ -400,7 +451,7 @@ Before adding ANY new endpoint, answer YES to all:
 
 ---
 
-## 📞 Violations Report
+### 📞 Violations Report
 
 If you find a violation of these rules:
 
@@ -416,14 +467,7 @@ If you find a violation of these rules:
 
 ---
 
-## 🔗 Related Documents
+### 🔗 Related Documents
 
-- `api.md` - Complete API documentation and catalog
-- `API_CONSOLIDATION_PLAN.md` - Detailed consolidation timeline
-- `ENDPOINT_ROUTING_GUIDE.md` - How endpoints are routed
-
----
-
-**Last Review:** 2026-09-25  
-**Next Review:** 2026-10-25  
-**Status:** ACTIVE - All rules must be followed
+- `doc/api.md` - Complete API documentation and catalog
+- `rules.md` - Operational and architectural governance

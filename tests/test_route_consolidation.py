@@ -1,4 +1,6 @@
 import sys
+import unittest
+from unittest.mock import MagicMock
 from collections import defaultdict
 from pathlib import Path
 
@@ -6,7 +8,24 @@ from flask import Flask
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
 
-from app import api_v1, api_v1_actions, api_v1_consolidated, api_v1_extended
+# Mock heavy PDF generator dependency if running outside container with reportlab
+if 'app.pdf_generator' not in sys.modules:
+    try:
+        import app.pdf_generator
+    except ImportError:
+        mock_pdf = MagicMock()
+        sys.modules['app.pdf_generator'] = mock_pdf
+
+from app import (
+    api_v1,
+    api_v1_actions,
+    api_v1_consolidated,
+    api_v1_extended,
+    api_v1_db,
+    api_v1_reports,
+    api_corporate,
+    api_ingestion,
+)
 
 
 def _collect_route_map():
@@ -16,6 +35,10 @@ def _collect_route_map():
         api_v1_actions.api,
         api_v1_extended.api,
         api_v1_consolidated.api,
+        api_v1_db.api,
+        api_v1_reports.api,
+        api_corporate.api,
+        api_ingestion.api,
     ]:
         app.register_blueprint(blueprint)
 
@@ -48,3 +71,15 @@ def test_batch_operation_routes_exist():
     }
     for route in required:
         assert route in routes, f"Missing route {route}"
+
+
+class RouteConsolidationTests(unittest.TestCase):
+    def test_duplicate_api_routes_are_not_registered(self):
+        test_duplicate_api_routes_are_not_registered()
+
+    def test_batch_operation_routes_exist(self):
+        test_batch_operation_routes_exist()
+
+
+if __name__ == '__main__':
+    unittest.main()
